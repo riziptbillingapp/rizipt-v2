@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-body text-ink antialiased;
+  }
+  h1, h2, h3 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .stamp {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide;
+    transform: rotate(-1.5deg);
+  }
+  .stamp-pending {
+    @apply border-ledger-amber/40 bg-ledger-amber/10 text-ledger-amber;
+  }
+  .stamp-approved, .stamp-paid {
+    @apply border-ledger-green/40 bg-ledger-green/10 text-ledger-green;
+  }
+  .stamp-rejected, .stamp-void {
+    @apply border-ledger-red/40 bg-ledger-red/10 text-ledger-red;
+  }
+  .stamp-converted, .stamp-sent {
+    @apply border-ledger-navy/40 bg-ledger-navy/10 text-ledger-navy;
+  }
+  .stamp-draft {
+    @apply border-ink-soft/30 bg-ink-soft/10 text-ink-soft;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn border-ink bg-ink text-paper hover:bg-ink/85;
+  }
+  .btn-secondary {
+    @apply btn border-paper-line bg-white text-ink hover:border-ink/40;
+  }
+  .btn-danger {
+    @apply btn border-ledger-red/30 bg-white text-ledger-red hover:bg-ledger-red/5;
+  }
+
+  .field-label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-soft;
+  }
+  .field-input {
+    @apply w-full rounded-md border border-paper-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ledger-navy focus:outline-none focus:ring-1 focus:ring-ledger-navy;
+  }
+  .card {
+    @apply rounded-lg border border-paper-line bg-white shadow-sm;
+  }
+  .doc-number {
+    @apply font-mono tracking-tight text-ink;
+  }
+}

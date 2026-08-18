@@ -1,0 +1,323 @@
+import { useEffect, useState } from "react";
+import { api } from "../api/client.js";
+import Modal from "../components/Modal.jsx";
+import StatusStamp from "../components/StatusStamp.jsx";
+import ItemsEditor, { emptyLine, money } from "../components/ItemsEditor.jsx";
+
+const today = () => new Date().toISOString().slice(0, 10);
+const PAYMENT_METHODS = ["cash", "card", "upi", "bank_transfer", "cheque", "other"];
+
+function CreateBillModal({ open, onClose, onCreated, customers, products }) {
+  const [customerId, setCustomerId] = useState("");
+  const [issueDate, setIssueDate] = useState(today());
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState([emptyLine()]);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setCustomerId("");
+      setIssueDate(today());
+      setPaymentMethod("cash");
+      setPaymentReference("");
+      setNotes("");
+      setItems([emptyLine()]);
+      setError("");
+    }
+  }, [open]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!customerId) return setError("Select a customer first.");
+    setSaving(true);
+    setError("");
+    try {
+      await api.createBill({
+        customer_id: Number(customerId),
+        issue_date: issueDate,
+        payment_method: paymentMethod,
+        payment_reference: paymentReference,
+        notes,
+        items,
+        status: "paid",
+      });
+      onCreated();
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="New bill / receipt (direct)" wide>
+      <p className="mb-3 text-xs text-ink-soft">
+        For a walk-in sale not tied to an invoice. To bill an approved invoice, convert it from the Invoices tab
+        instead.
+      </p>
+      {error && <div className="mb-3 rounded-md bg-ledger-red/10 px-3 py-2 text-sm text-ledger-red">{error}</div>}
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="field-label">Customer *</label>
+            <select className="field-input" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+              <option value="">Select customer…</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="field-label">Issue date</label>
+            <input type="date" className="field-input" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="field-label">Payment method</label>
+            <select className="field-input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m.replace("_", " ")}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="field-label">Payment reference</label>
+          <input
+            className="field-input"
+            placeholder="UTR / transaction id / cheque no."
+            value={paymentReference}
+            onChange={(e) => setPaymentReference(e.target.value)}
+          />
+        </div>
+
+        <ItemsEditor items={items} onChange={setItems} products={products} />
+
+        <div>
+          <label className="field-label">Notes</label>
+          <textarea className="field-input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-paper-line pt-4">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? "Creating…" : "Create bill / receipt"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function BillDetailModal({ id, open, onClose, onChanged, customers }) {
+  const [doc, setDoc] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open && id) {
+      api.getBill(id).then(setDoc).catch((e) => setError(e.message));
+    }
+  }, [open, id]);
+
+  const customerName = doc ? customers.find((c) => c.id === doc.customer_id)?.name : "";
+
+  const voidBill = async () => {
+    if (!confirm("Void this bill/receipt?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await api.voidBill(doc.id);
+      setDoc(updated);
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!doc) return open ? <Modal open={open} onClose={onClose} title="Bill">Loading…</Modal> : null;
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Receipt ${doc.doc_number}`} wide>
+      {error && <div className="mb-3 rounded-md bg-ledger-red/10 px-3 py-2 text-sm text-ledger-red">{error}</div>}
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <StatusStamp status={doc.status} />
+        {doc.source_type === "invoice" && (
+          <span className="ml-2 text-xs text-ink-soft">Sourced from invoice #{doc.invoice_id}</span>
+        )}
+      </div>
+
+      <div className="mb-4 grid grid-cols-3 gap-4 text-sm">
+        <div>
+          <div className="field-label">Customer</div>
+          <div className="text-ink">{customerName}</div>
+        </div>
+        <div>
+          <div className="field-label">Issue date</div>
+          <div className="text-ink">{doc.issue_date}</div>
+        </div>
+        <div>
+          <div className="field-label">Payment</div>
+          <div className="text-ink">
+            {doc.payment_method?.replace("_", " ")}
+            {doc.payment_reference ? ` · ${doc.payment_reference}` : ""}
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-md border border-paper-line">
+        <table className="w-full text-sm">
+          <thead className="bg-paper text-left text-xs uppercase tracking-wide text-ink-soft">
+            <tr>
+              <th className="px-3 py-2">Item</th>
+              <th className="px-3 py-2 text-right">Qty</th>
+              <th className="px-3 py-2 text-right">Price</th>
+              <th className="px-3 py-2 text-right">Tax %</th>
+              <th className="px-3 py-2 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {doc.items.map((it, idx) => {
+              const gross = it.quantity * it.unit_price;
+              const net = Math.max(gross - it.discount, 0);
+              const total = net + net * (it.tax_rate / 100);
+              return (
+                <tr key={idx} className="border-t border-paper-line">
+                  <td className="px-3 py-2">{it.name}</td>
+                  <td className="px-3 py-2 text-right font-mono">{it.quantity}</td>
+                  <td className="px-3 py-2 text-right font-mono">{money(it.unit_price)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{it.tax_rate}%</td>
+                  <td className="px-3 py-2 text-right font-mono">{money(total)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-3 flex justify-end">
+        <div className="w-56 space-y-1 font-mono text-sm">
+          <div className="flex justify-between border-t border-paper-line pt-1 text-base font-semibold text-ink">
+            <span>Total</span>
+            <span>{money(doc.grand_total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {doc.status !== "void" && (
+        <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
+          <button className="btn-danger" disabled={busy} onClick={voidBill}>
+            Void receipt
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+export default function Bills() {
+  const [bills, setBills] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [detailId, setDetailId] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = () => api.listBills().then(setBills).catch((e) => setError(e.message));
+
+  useEffect(() => {
+    load();
+    api.listCustomers().then(setCustomers).catch(() => {});
+    api.listProducts().then(setProducts).catch(() => {});
+  }, []);
+
+  const customerName = (id) => customers.find((c) => c.id === id)?.name || "—";
+
+  return (
+    <div>
+      <header className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-ink">Bills / Receipts</h1>
+          <p className="text-sm text-ink-soft">Direct sales, or ones converted from an approved invoice.</p>
+        </div>
+        <button className="btn-primary" onClick={() => setCreateOpen(true)} disabled={customers.length === 0}>
+          + New bill / receipt
+        </button>
+      </header>
+
+      {error && <div className="mb-4 rounded-md bg-ledger-red/10 px-4 py-2 text-sm text-ledger-red">{error}</div>}
+
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-paper text-left text-xs uppercase tracking-wide text-ink-soft">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Number</th>
+              <th className="px-4 py-3 font-semibold">Customer</th>
+              <th className="px-4 py-3 font-semibold">Source</th>
+              <th className="px-4 py-3 font-semibold">Date</th>
+              <th className="px-4 py-3 font-semibold">Payment</th>
+              <th className="px-4 py-3 text-right font-semibold">Total</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bills.map((b) => (
+              <tr
+                key={b.id}
+                className="cursor-pointer border-t border-paper-line hover:bg-paper/60"
+                onClick={() => setDetailId(b.id)}
+              >
+                <td className="doc-number px-4 py-3">{b.doc_number}</td>
+                <td className="px-4 py-3 text-ink">{customerName(b.customer_id)}</td>
+                <td className="px-4 py-3 text-xs text-ink-soft">
+                  {b.source_type === "invoice" ? `Invoice #${b.invoice_id}` : "Direct"}
+                </td>
+                <td className="px-4 py-3 text-ink-soft">{b.issue_date}</td>
+                <td className="px-4 py-3 text-ink-soft">{b.payment_method?.replace("_", " ")}</td>
+                <td className="px-4 py-3 text-right font-mono text-ink">{money(b.grand_total)}</td>
+                <td className="px-4 py-3">
+                  <StatusStamp status={b.status} />
+                </td>
+              </tr>
+            ))}
+            {bills.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
+                  No bills yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <CreateBillModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={load}
+        customers={customers}
+        products={products}
+      />
+      <BillDetailModal
+        id={detailId}
+        open={!!detailId}
+        onClose={() => setDetailId(null)}
+        onChanged={load}
+        customers={customers}
+      />
+    </div>
+  );
+}
