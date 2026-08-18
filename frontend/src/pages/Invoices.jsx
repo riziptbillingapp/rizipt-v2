@@ -12,17 +12,25 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
   const [issueDate, setIssueDate] = useState(today());
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [defaultTaxRate, setDefaultTaxRate] = useState(0);
   const [items, setItems] = useState([emptyLine()]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
+      api
+        .getCompany()
+        .then((c) => {
+          const rate = Number(c?.default_tax_rate) || 0;
+          setDefaultTaxRate(rate);
+          setItems([emptyLine(rate)]);
+        })
+        .catch(() => {});
       setCustomerId("");
       setIssueDate(today());
       setDueDate("");
       setNotes("");
-      setItems([emptyLine()]);
       setError("");
     }
   }, [open]);
@@ -80,7 +88,7 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
           </div>
         </div>
 
-        <ItemsEditor items={items} onChange={setItems} products={products} />
+        <ItemsEditor items={items} onChange={setItems} products={products} defaultTaxRate={defaultTaxRate} />
 
         <div>
           <label className="field-label">Notes</label>

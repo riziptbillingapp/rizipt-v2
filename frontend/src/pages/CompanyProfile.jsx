@@ -79,10 +79,16 @@ export default function CompanyProfile() {
     setError("");
     try {
       const updated = await api.updateCompany(form);
-      setForm(updated);
+      // Merge rather than replace: if the server response is missing a field
+      // (e.g. a column that hasn't been migrated on the live DB yet), this
+      // keeps what's currently in the form instead of silently wiping it.
+      setForm((f) => ({ ...f, ...updated }));
       setSavedAt(new Date());
     } catch (e) {
-      setError(e.message);
+      const hint = /no such column/i.test(e.message)
+        ? " — your database is missing a recent column. Run the migrations in backend/migrations against your live D1 database, then redeploy the Worker."
+        : "";
+      setError(e.message + hint);
     } finally {
       setSaving(false);
     }

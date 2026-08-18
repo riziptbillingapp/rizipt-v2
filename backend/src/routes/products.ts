@@ -30,12 +30,13 @@ products.post("/", async (c) => {
   if (!body.name) return c.json({ error: "name is required" }, 400);
 
   const result = await c.env.DB.prepare(
-    `INSERT INTO products (name, sku, description, unit, price, tax_rate)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO products (name, sku, hsn_sac, description, unit, price, tax_rate)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       body.name,
       body.sku ?? null,
+      body.hsn_sac ?? null,
       body.description ?? null,
       body.unit ?? "unit",
       Number(body.price) || 0,
@@ -53,7 +54,7 @@ products.put("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
-  const fields = ["name", "sku", "description", "unit", "price", "tax_rate"];
+  const fields = ["name", "sku", "hsn_sac", "description", "unit", "price", "tax_rate"];
   const sets: string[] = [];
   const values: unknown[] = [];
   for (const f of fields) {

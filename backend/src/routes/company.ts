@@ -21,6 +21,8 @@ const EDITABLE_FIELDS = [
   "bank_name",
   "bank_account_no",
   "bank_ifsc",
+  "upi_id",
+  "website",
   "quotation_prefix",
   "invoice_prefix",
   "bill_prefix",

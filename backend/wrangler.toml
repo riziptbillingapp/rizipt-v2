@@ -9,13 +9,3 @@ database_id = "ff303f78-3914-4d09-a2bb-2a21c05e368a"
 
 [vars]
 ALLOWED_ORIGIN = "https://rizipt.in"
-
-# Deploy steps:
-#   1. wrangler d1 create rizipt_v2
-#   2. paste the returned database_id above
-#   3. wrangler d1 execute rizipt_v2 --file=./schema.sql --remote
-#   4. wrangler deploy
-#
-# Local dev:
-#   wrangler d1 execute rizipt_v2 --file=./schema.sql --local
-#   wrangler dev

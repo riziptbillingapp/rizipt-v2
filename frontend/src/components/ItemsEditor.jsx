@@ -1,4 +1,4 @@
-const emptyLine = () => ({
+const emptyLine = (defaultTaxRate = 0) => ({
   product_id: null,
   name: "",
   description: "",
@@ -6,7 +6,7 @@ const emptyLine = () => ({
   quantity: 1,
   unit: "pcs",
   unit_price: 0,
-  tax_rate: 0,
+  tax_rate: Number(defaultTaxRate) || 0,
   discount_percent: 0,
 });
 
@@ -38,14 +38,14 @@ export function computeTotals(items) {
   return { subtotal, discount_total, tax_total, grand_total, round_off };
 }
 
-export default function ItemsEditor({ items, onChange, products = [] }) {
+export default function ItemsEditor({ items, onChange, products = [], defaultTaxRate = 0 }) {
   const update = (idx, field, value) => {
     const next = items.slice();
     next[idx] = { ...next[idx], [field]: value };
     onChange(next);
   };
 
-  const addLine = () => onChange([...items, emptyLine()]);
+  const addLine = () => onChange([...items, emptyLine(defaultTaxRate)]);
   const removeLine = (idx) => onChange(items.filter((_, i) => i !== idx));
 
   const applyProduct = (idx, productId) => {

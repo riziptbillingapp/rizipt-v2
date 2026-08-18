@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import Modal from "./Modal.jsx";
 import DocumentPreview from "./DocumentPreview.jsx";
-import { downloadElementAsPdf } from "../utils/pdf.js";
+import { generateDocumentPdf } from "../utils/generateDocumentPdf.js";
 
 export default function PreviewModal({ docType, doc, customer, open, onClose }) {
   const [company, setCompany] = useState(null);
@@ -15,11 +15,11 @@ export default function PreviewModal({ docType, doc, customer, open, onClose }) 
   }, [open]);
 
   const download = async () => {
-    if (!previewRef.current) return;
     setDownloading(true);
     setError("");
     try {
-      await downloadElementAsPdf(previewRef.current, `${doc.doc_number}.pdf`);
+      const pdf = await generateDocumentPdf({ docType, doc, company, customer });
+      pdf.save(`${doc.doc_number}.pdf`);
     } catch (e) {
       setError("Could not generate PDF: " + e.message);
     } finally {
