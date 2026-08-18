@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import Modal from "../components/Modal.jsx";
 import StatusStamp from "../components/StatusStamp.jsx";
 import ItemsEditor, { emptyLine, money } from "../components/ItemsEditor.jsx";
+import PreviewModal from "../components/PreviewModal.jsx";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const PAYMENT_METHODS = ["cash", "card", "upi", "bank_transfer", "cheque", "other"];
@@ -123,6 +124,7 @@ function BillDetailModal({ id, open, onClose, onChanged, customers }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (open && id) {
@@ -130,7 +132,8 @@ function BillDetailModal({ id, open, onClose, onChanged, customers }) {
     }
   }, [open, id]);
 
-  const customerName = doc ? customers.find((c) => c.id === doc.customer_id)?.name : "";
+  const customer = doc ? customers.find((c) => c.id === doc.customer_id) : null;
+  const customerName = customer?.name || "";
 
   const voidBill = async () => {
     if (!confirm("Void this bill/receipt?")) return;
@@ -217,13 +220,24 @@ function BillDetailModal({ id, open, onClose, onChanged, customers }) {
         </div>
       </div>
 
-      {doc.status !== "void" && (
-        <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
+      <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
+        <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+          Preview / Download PDF
+        </button>
+        {doc.status !== "void" && (
           <button className="btn-danger" disabled={busy} onClick={voidBill}>
             Void receipt
           </button>
-        </div>
-      )}
+        )}
+      </div>
+
+      <PreviewModal
+        docType="bill"
+        doc={doc}
+        customer={customer}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+      />
     </Modal>
   );
 }

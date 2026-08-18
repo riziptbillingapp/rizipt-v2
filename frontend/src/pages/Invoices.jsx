@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import Modal from "../components/Modal.jsx";
 import StatusStamp from "../components/StatusStamp.jsx";
 import ItemsEditor, { emptyLine, money } from "../components/ItemsEditor.jsx";
+import PreviewModal from "../components/PreviewModal.jsx";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -103,6 +104,7 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (open && id) {
@@ -110,7 +112,8 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
     }
   }, [open, id]);
 
-  const customerName = doc ? customers.find((c) => c.id === doc.customer_id)?.name : "";
+  const customer = doc ? customers.find((c) => c.id === doc.customer_id) : null;
+  const customerName = customer?.name || "";
 
   const act = async (fn) => {
     setBusy(true);
@@ -208,6 +211,9 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
       )}
 
       <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
+        <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+          Preview / Download PDF
+        </button>
         {doc.approval_status === "pending" && (
           <>
             <button className="btn-primary" disabled={busy} onClick={() => act(() => api.approveInvoice(doc.id))}>
@@ -228,6 +234,14 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
           </button>
         )}
       </div>
+
+      <PreviewModal
+        docType="invoice"
+        doc={doc}
+        customer={customer}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+      />
     </Modal>
   );
 }

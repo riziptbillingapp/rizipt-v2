@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 import Modal from "../components/Modal.jsx";
 import { money } from "../components/ItemsEditor.jsx";
 
-const emptyForm = { name: "", sku: "", description: "", unit: "unit", price: 0, tax_rate: 0 };
+const emptyForm = { name: "", sku: "", hsn_sac: "", description: "", unit: "unit", price: 0, tax_rate: 0 };
 
 export default function Products() {
   const [products, setProducts] = useState([]);
@@ -87,6 +87,7 @@ export default function Products() {
             <tr>
               <th className="px-4 py-3 font-semibold">Name</th>
               <th className="px-4 py-3 font-semibold">SKU</th>
+              <th className="px-4 py-3 font-semibold">HSN/SAC</th>
               <th className="px-4 py-3 font-semibold">Unit</th>
               <th className="px-4 py-3 text-right font-semibold">Price</th>
               <th className="px-4 py-3 text-right font-semibold">Tax %</th>
@@ -98,6 +99,7 @@ export default function Products() {
               <tr key={p.id} className="border-t border-paper-line hover:bg-paper/60">
                 <td className="px-4 py-3 font-medium text-ink">{p.name}</td>
                 <td className="px-4 py-3 font-mono text-xs text-ink-soft">{p.sku || "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs text-ink-soft">{p.hsn_sac || "—"}</td>
                 <td className="px-4 py-3 text-ink-soft">{p.unit}</td>
                 <td className="px-4 py-3 text-right font-mono text-ink">{money(p.price)}</td>
                 <td className="px-4 py-3 text-right font-mono text-ink-soft">{p.tax_rate}%</td>
@@ -116,7 +118,7 @@ export default function Products() {
             ))}
             {!loading && products.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-ink-soft">
+                <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
                   No products yet.
                 </td>
               </tr>
@@ -154,6 +156,15 @@ export default function Products() {
                 onChange={(e) => setForm({ ...form, unit: e.target.value })}
               />
             </div>
+          </div>
+          <div>
+            <label className="field-label">HSN/SAC code</label>
+            <input
+              className="field-input"
+              placeholder="e.g. 998361"
+              value={form.hsn_sac || ""}
+              onChange={(e) => setForm({ ...form, hsn_sac: e.target.value })}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

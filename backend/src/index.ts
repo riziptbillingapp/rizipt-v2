@@ -12,29 +12,121 @@ import { history } from "./routes/history";
 
 const app = new Hono<{ Bindings: Env }>();
 
+/*
+ * Allowed frontend origins
+ *
+ * Both domains can use the same API during the migration.
+ */
+const allowedOrigins = [
+  "https://rizipt-v2.pages.dev",
+  "https://rizipt.in",
+];
+
+/*
+ * CORS
+ */
 app.use("*", async (c, next) => {
+  const requestOrigin = c.req.header("Origin");
+
   const corsMiddleware = cors({
-    origin: c.env.ALLOWED_ORIGIN || "*",
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
+    origin: (origin) => {
+      if (!origin) {
+        return allowedOrigins[0];
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return origin;
+      }
+
+      return allowedOrigins[0];
+    },
+
+    allowMethods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowHeaders: [
+      "Content-Type",
+    ],
   });
+
   return corsMiddleware(c, next);
 });
 
-app.get("/api/health", (c) => c.json({ ok: true, service: "rizipt-v2-api" }));
+/*
+ * Health check
+ */
+app.get("/api/health", (c) => {
+  return c.json({
+    ok: true,
+    service: "rizipt-v2-api",
+  });
+});
 
+/*
+ * Company Profile
+ */
 app.route("/api/company-profile", company);
+
+/*
+ * Customers
+ */
 app.route("/api/customers", customers);
+
+/*
+ * Products
+ */
 app.route("/api/products", products);
+
+/*
+ * Quotations
+ */
 app.route("/api/quotations", quotations);
+
+/*
+ * Invoices
+ */
 app.route("/api/invoices", invoices);
+
+/*
+ * Bills / Receipts
+ */
 app.route("/api/bills", bills);
+
+/*
+ * Billing History
+ */
 app.route("/api/billing-history", history);
 
-app.notFound((c) => c.json({ error: "Not found" }, 404));
+/*
+ * Not Found
+ */
+app.notFound((c) => {
+  return c.json(
+    {
+      error: "Not found",
+    },
+    404
+  );
+});
+
+/*
+ * Error Handler
+ */
 app.onError((err, c) => {
   console.error(err);
-  return c.json({ error: "Internal server error" }, 500);
+
+  return c.json(
+    {
+      error: "Internal server error",
+    },
+    500
+  );
 });
 
 export default app;
