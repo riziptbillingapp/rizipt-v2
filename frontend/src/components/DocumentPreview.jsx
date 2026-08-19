@@ -15,6 +15,12 @@ const DATE_LABEL = {
   bill: "Payment",
 };
 
+const TOTAL_LABEL = {
+  quotation: "Net Payable",
+  invoice: "Net Payable",
+  bill: "Amount Received",
+};
+
 function fmtDate(d) {
   if (!d) return "—";
   const date = new Date(d);
@@ -31,9 +37,12 @@ function fmtDate(d) {
 export default function DocumentPreview({ docType, doc, company, customer, previewRef }) {
   const [qr, setQr] = useState(null);
   const brand = company?.brand_color || DEFAULT_BRAND_COLOR;
+  // A bill/receipt records money already received — showing a "scan to pay"
+  // QR on it would ask the customer to pay again for something they just paid.
+  const isReceipt = docType === "bill";
 
   useEffect(() => {
-    if (!company?.upi_id) return setQr(null);
+    if (isReceipt || !company?.upi_id) return setQr(null);
     const uri = buildUpiUri({
       upiId: company.upi_id,
       payeeName: company.name,
@@ -41,7 +50,7 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
       note: doc.doc_number,
     });
     generateQrDataUrl(uri).then(setQr);
-  }, [company?.upi_id, company?.name, doc.grand_total, doc.doc_number]);
+  }, [isReceipt, company?.upi_id, company?.name, doc.grand_total, doc.doc_number]);
 
   const items = doc.items || [];
   const secondaryDate = docType === "quotation" ? doc.valid_until : docType === "invoice" ? doc.due_date : doc.issue_date;
@@ -184,55 +193,69 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
             className="flex justify-between border-t-2 py-1.5 text-sm font-bold"
             style={{ borderColor: brand, color: brand }}
           >
-            <span>Net Payable</span>
+            <span>{TOTAL_LABEL[docType]}</span>
             <span>₹ {money(doc.grand_total)}</span>
           </div>
         </div>
       </div>
 
-      {/* Payment details */}
-      {(company?.bank_name || company?.upi_id) && (
-        <div className="mt-6 flex items-start justify-between border-t border-paper-line pt-4">
+      {/* Payment details: a receipt shows how payment was already received (no QR, no
+          invitation to pay). A quotation/invoice shows how to pay, with a UPI QR. */}
+      {isReceipt ? (
+        <div className="mt-6 flex items-center justify-between rounded-md border border-ledger-green/30 bg-ledger-green/5 px-4 py-3">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-ledger-green">
-              Bank / Payment Details
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-ledger-green">Payment Received</p>
+            <p className="text-[11px] text-ink">
+              Via {(doc.payment_method || "cash").replace("_", " ")}
+              {doc.payment_reference ? ` · Ref: ${doc.payment_reference}` : ""}
             </p>
-            <table className="mt-1 text-[11px]">
-              <tbody>
-                {company?.bank_name && (
-                  <tr>
-                    <td className="pr-3 text-ink-soft">Bank</td>
-                    <td>{company.bank_name}</td>
-                  </tr>
-                )}
-                {company?.bank_account_no && (
-                  <tr>
-                    <td className="pr-3 text-ink-soft">A/C No</td>
-                    <td className="font-mono">{company.bank_account_no}</td>
-                  </tr>
-                )}
-                {company?.bank_ifsc && (
-                  <tr>
-                    <td className="pr-3 text-ink-soft">IFSC</td>
-                    <td className="font-mono">{company.bank_ifsc}</td>
-                  </tr>
-                )}
-                {company?.upi_id && (
-                  <tr>
-                    <td className="pr-3 text-ink-soft">UPI</td>
-                    <td className="font-mono">{company.upi_id}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
           </div>
-          {qr && (
-            <div className="flex flex-col items-center">
-              <img src={qr} alt="Scan to pay via UPI" className="h-24 w-24" />
-              <span className="mt-1 text-[9px] text-ink-soft">Scan to pay</span>
-            </div>
-          )}
+          <span className="stamp stamp-paid">Paid in full</span>
         </div>
+      ) : (
+        (company?.bank_name || company?.upi_id) && (
+          <div className="mt-6 flex items-start justify-between border-t border-paper-line pt-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ledger-green">
+                Bank / Payment Details
+              </p>
+              <table className="mt-1 text-[11px]">
+                <tbody>
+                  {company?.bank_name && (
+                    <tr>
+                      <td className="pr-3 text-ink-soft">Bank</td>
+                      <td>{company.bank_name}</td>
+                    </tr>
+                  )}
+                  {company?.bank_account_no && (
+                    <tr>
+                      <td className="pr-3 text-ink-soft">A/C No</td>
+                      <td className="font-mono">{company.bank_account_no}</td>
+                    </tr>
+                  )}
+                  {company?.bank_ifsc && (
+                    <tr>
+                      <td className="pr-3 text-ink-soft">IFSC</td>
+                      <td className="font-mono">{company.bank_ifsc}</td>
+                    </tr>
+                  )}
+                  {company?.upi_id && (
+                    <tr>
+                      <td className="pr-3 text-ink-soft">UPI</td>
+                      <td className="font-mono">{company.upi_id}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {qr && (
+              <div className="flex flex-col items-center">
+                <img src={qr} alt="Scan to pay via UPI" className="h-24 w-24" />
+                <span className="mt-1 text-[9px] text-ink-soft">Scan to pay</span>
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {/* Terms + signature */}

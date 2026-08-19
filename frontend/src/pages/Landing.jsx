@@ -122,7 +122,7 @@ export default function Landing() {
       </section>
 
       <footer className="border-t border-paper-line px-6 py-8 text-center text-xs text-ink-soft">
-        Rizipt — built on Cloudflare Workers + D1.
+        Rizipt — built and maintained by Skylinn Voxel Studio Private Limited - Chengalpattu.
       </footer>
     </div>
   );
