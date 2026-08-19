@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { fileToCompressedDataUrl } from "../utils/image.js";
 import { buildUpiUri, generateQrDataUrl } from "../utils/upiQr.js";
+import { DEFAULT_BRAND_COLOR } from "../utils/color.js";
+
+const COLOR_PRESETS = [
+  { label: "Navy (default)", value: "#233A5E" },
+  { label: "Blue", value: "#1D4ED8" },
+  { label: "Teal", value: "#0F766E" },
+  { label: "Green", value: "#2F6F4E" },
+  { label: "Maroon", value: "#7F1D1D" },
+  { label: "Purple", value: "#5B21B6" },
+];
 
 const FIELDS = [
   ["name", "Company name"],
@@ -133,6 +143,39 @@ export default function CompanyProfile() {
                 </button>
               )}
               <p className="mt-2 text-xs text-ink-soft">PNG or JPG. Resized automatically for documents.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <h2 className="mb-1 font-display text-base font-semibold text-ink">Document theme color</h2>
+          <p className="mb-3 text-xs text-ink-soft">
+            Used for headings, the item table header, and totals on your quotations, invoices, and receipts.
+          </p>
+          <div className="flex items-center gap-4">
+            <input
+              type="color"
+              value={form.brand_color || DEFAULT_BRAND_COLOR}
+              onChange={(e) => update("brand_color", e.target.value)}
+              className="h-10 w-14 cursor-pointer rounded border border-paper-line bg-white p-1"
+            />
+            <input
+              className="field-input w-32 font-mono"
+              value={form.brand_color || DEFAULT_BRAND_COLOR}
+              onChange={(e) => update("brand_color", e.target.value)}
+              placeholder="#233A5E"
+            />
+            <div className="flex gap-2">
+              {COLOR_PRESETS.map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  title={preset.label}
+                  onClick={() => update("brand_color", preset.value)}
+                  className="h-7 w-7 rounded-full border border-paper-line ring-offset-2 hover:ring-2 hover:ring-ink/20"
+                  style={{ backgroundColor: preset.value }}
+                />
+              ))}
             </div>
           </div>
         </div>

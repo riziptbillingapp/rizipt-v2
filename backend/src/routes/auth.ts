@@ -122,7 +122,7 @@ auth.get("/google/callback", async (c) => {
       c.env.SESSION_SECRET
     );
 
-    const res = new Response(null, { status: 302, headers: { Location: `${c.env.FRONTEND_URL}/` } });
+    const res = new Response(null, { status: 302, headers: { Location: `${c.env.FRONTEND_URL}/dashboard` } });
     setCookie(res.headers, sessionCookieName(), session, sessionTtlSeconds());
     clearCookie(res.headers, "oauth_state");
     return res;

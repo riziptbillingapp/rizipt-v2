@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS company_profile (
   bank_ifsc TEXT,
   upi_id TEXT,
   website TEXT,
+  brand_color TEXT DEFAULT '#233A5E',
   quotation_prefix TEXT NOT NULL DEFAULT 'QUO',
   invoice_prefix TEXT NOT NULL DEFAULT 'INV',
   bill_prefix TEXT NOT NULL DEFAULT 'RCT',

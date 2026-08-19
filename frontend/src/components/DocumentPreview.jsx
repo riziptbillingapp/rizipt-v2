@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { lineTotals, money } from "./ItemsEditor.jsx";
 import { buildUpiUri, generateQrDataUrl } from "../utils/upiQr.js";
+import { DEFAULT_BRAND_COLOR } from "../utils/color.js";
 
 const TITLE = {
   quotation: "QUOTATION",
@@ -29,6 +30,7 @@ function fmtDate(d) {
  */
 export default function DocumentPreview({ docType, doc, company, customer, previewRef }) {
   const [qr, setQr] = useState(null);
+  const brand = company?.brand_color || DEFAULT_BRAND_COLOR;
 
   useEffect(() => {
     if (!company?.upi_id) return setQr(null);
@@ -57,13 +59,15 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
       style={{ fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}
     >
       {/* Header */}
-      <div className="flex items-start justify-between border-b-2 border-ledger-navy pb-4">
+      <div className="flex items-start justify-between border-b-2 pb-4" style={{ borderColor: brand }}>
         <div className="flex gap-4">
           {company?.logo_url && (
             <img src={company.logo_url} alt="" className="h-16 w-16 shrink-0 rounded-full object-contain" />
           )}
           <div>
-            <h1 className="text-lg font-bold uppercase tracking-tight text-ledger-navy">{company?.name}</h1>
+            <h1 className="text-lg font-bold uppercase tracking-tight" style={{ color: brand }}>
+              {company?.name}
+            </h1>
             <p className="mt-1 max-w-sm text-[11px] leading-snug text-ink-soft">
               {[company?.address_line1, company?.address_line2, company?.city, company?.state, company?.pincode]
                 .filter(Boolean)
@@ -82,7 +86,9 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
           </div>
         </div>
         <div className="text-right">
-          <h2 className="font-display text-2xl font-bold tracking-wide text-ledger-navy">{TITLE[docType]}</h2>
+          <h2 className="font-display text-2xl font-bold tracking-wide" style={{ color: brand }}>
+            {TITLE[docType]}
+          </h2>
           <p className="mt-1 font-mono text-xs text-ink-soft">No: {doc.doc_number}</p>
           <p className="font-mono text-xs text-ink-soft">Date: {fmtDate(doc.issue_date)}</p>
           {secondaryDate && (
@@ -94,8 +100,10 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
       </div>
 
       {/* Bill to */}
-      <div className="mt-4 border-l-4 border-ledger-navy bg-paper/60 px-4 py-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-ledger-navy">Bill To</p>
+      <div className="mt-4 border-l-4 bg-paper/60 px-4 py-3" style={{ borderColor: brand }}>
+        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: brand }}>
+          Bill To
+        </p>
         <p className="font-semibold text-ink">{customer?.name}</p>
         <p className="max-w-md text-[11px] leading-snug text-ink-soft">
           {[customer?.billing_address, customer?.phone && `Ph: ${customer.phone}`, customer?.email && `Email: ${customer.email}`]
@@ -108,7 +116,7 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
       {/* Items table */}
       <table className="mt-4 w-full border-collapse text-[11px]">
         <thead>
-          <tr className="bg-ledger-navy text-left text-white">
+          <tr className="text-left text-white" style={{ backgroundColor: brand }}>
             <th className="px-2 py-2 font-semibold">#</th>
             <th className="px-2 py-2 font-semibold">Description</th>
             <th className="px-2 py-2 font-semibold">HSN/SAC</th>
@@ -172,7 +180,10 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
               <span>{roundOff >= 0 ? "+" : ""}{money(roundOff)}</span>
             </div>
           )}
-          <div className="flex justify-between border-t-2 border-ledger-navy py-1.5 text-sm font-bold text-ledger-navy">
+          <div
+            className="flex justify-between border-t-2 py-1.5 text-sm font-bold"
+            style={{ borderColor: brand, color: brand }}
+          >
             <span>Net Payable</span>
             <span>₹ {money(doc.grand_total)}</span>
           </div>

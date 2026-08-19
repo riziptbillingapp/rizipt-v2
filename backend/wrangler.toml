@@ -7,6 +7,10 @@ binding = "DB"
 database_name = "rizipt_v2"
 database_id = "ff303f78-3914-4d09-a2bb-2a21c05e368a"
 
+[[routes]]
+pattern = "api.rizipt.in"
+custom_domain = true
+
 [vars]
 ALLOWED_ORIGIN = "https://rizipt.in"
 FRONTEND_URL = "https://rizipt.in"

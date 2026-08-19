@@ -2,11 +2,11 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { lineTotals } from "../components/ItemsEditor.jsx";
 import { buildUpiUri, generateQrDataUrl } from "./upiQr.js";
+import { hexToRgb, DEFAULT_BRAND_COLOR } from "./color.js";
 
 const TITLE = { quotation: "QUOTATION", invoice: "TAX INVOICE", bill: "RECEIPT" };
 const DATE_LABEL = { quotation: "Valid Till", invoice: "Due Date", bill: "Payment Date" };
 
-const NAVY = [35, 58, 94];
 const INK = [28, 36, 48];
 const INK_SOFT = [86, 95, 110];
 const LINE = [231, 224, 208];
@@ -41,6 +41,7 @@ function getImageDimensions(dataUrl) {
 
 /** Builds a crisp, real-text A4 PDF for a quotation/invoice/bill. Returns a jsPDF instance. */
 export async function generateDocumentPdf({ docType, doc, company, customer }) {
+  const NAVY = hexToRgb(company?.brand_color || DEFAULT_BRAND_COLOR);
   const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const margin = 40;

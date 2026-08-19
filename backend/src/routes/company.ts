@@ -25,6 +25,7 @@ const EDITABLE_FIELDS = [
   "bank_ifsc",
   "upi_id",
   "website",
+  "brand_color",
   "quotation_prefix",
   "invoice_prefix",
   "bill_prefix",
