@@ -1,8 +1,10 @@
 import { Hono } from "hono";
-import type { Env } from "../types";
+import type { Env, AuthContext } from "../types";
 import { parseBody } from "../utils/http";
+import { requireAuth, requireActiveSubscription } from "../middleware/auth";
 
-export const company = new Hono<{ Bindings: Env }>();
+export const company = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
+company.use("*", requireAuth, requireActiveSubscription);
 
 const EDITABLE_FIELDS = [
   "name",
@@ -30,12 +32,24 @@ const EDITABLE_FIELDS = [
   "currency",
 ] as const;
 
+async function getOrCreateProfile(db: any, accountId: number) {
+  let row = await db.prepare("SELECT * FROM company_profile WHERE account_id = ?").bind(accountId).first();
+  if (!row) {
+    await db.prepare("INSERT INTO company_profile (account_id) VALUES (?)").bind(accountId).run();
+    row = await db.prepare("SELECT * FROM company_profile WHERE account_id = ?").bind(accountId).first();
+  }
+  return row;
+}
+
 company.get("/", async (c) => {
-  const row = await c.env.DB.prepare("SELECT * FROM company_profile WHERE id = 1").first();
+  const { accountId } = c.get("auth");
+  const row = await getOrCreateProfile(c.env.DB, accountId);
   return c.json(row ?? {});
 });
 
 company.put("/", async (c) => {
+  const { accountId } = c.get("auth");
+  await getOrCreateProfile(c.env.DB, accountId);
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
   const sets: string[] = [];
@@ -47,16 +61,14 @@ company.put("/", async (c) => {
     }
   }
 
-  if (sets.length === 0) {
-    const row = await c.env.DB.prepare("SELECT * FROM company_profile WHERE id = 1").first();
-    return c.json(row ?? {});
+  if (sets.length > 0) {
+    sets.push("updated_at = datetime('now')");
+    values.push(accountId);
+    await c.env.DB.prepare(`UPDATE company_profile SET ${sets.join(", ")} WHERE account_id = ?`)
+      .bind(...values)
+      .run();
   }
 
-  sets.push("updated_at = datetime('now')");
-  await c.env.DB.prepare(`UPDATE company_profile SET ${sets.join(", ")} WHERE id = 1`)
-    .bind(...values)
-    .run();
-
-  const row = await c.env.DB.prepare("SELECT * FROM company_profile WHERE id = 1").first();
+  const row = await c.env.DB.prepare("SELECT * FROM company_profile WHERE account_id = ?").bind(accountId).first();
   return c.json(row ?? {});
 });

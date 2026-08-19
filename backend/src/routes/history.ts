@@ -1,15 +1,15 @@
 import { Hono } from "hono";
-import type { Env } from "../types";
+import type { Env, AuthContext } from "../types";
+import { requireAuth } from "../middleware/auth";
 
-export const history = new Hono<{ Bindings: Env }>();
+export const history = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
+history.use("*", requireAuth);
 
-// Unified, chronological feed across quotations, invoices, and bills,
-// each tagged with its type and, where applicable, links to the
-// document it was converted from / into.
 history.get("/", async (c) => {
+  const { accountId } = c.get("auth");
   const customerId = c.req.query("customer_id");
-  const filter = customerId ? "WHERE customer_id = ?" : "";
-  const binds = customerId ? [customerId] : [];
+  const filter = customerId ? "WHERE account_id = ? AND customer_id = ?" : "WHERE account_id = ?";
+  const binds = customerId ? [accountId, customerId] : [accountId];
 
   const [q, i, b] = await Promise.all([
     c.env.DB.prepare(
@@ -38,9 +38,9 @@ history.get("/", async (c) => {
   if (customerIds.size > 0) {
     const placeholders = Array.from(customerIds).map(() => "?").join(",");
     const { results } = await c.env.DB.prepare(
-      `SELECT id, name FROM customers WHERE id IN (${placeholders})`
+      `SELECT id, name FROM customers WHERE account_id = ? AND id IN (${placeholders})`
     )
-      .bind(...Array.from(customerIds))
+      .bind(accountId, ...Array.from(customerIds))
       .all();
     customerMap = Object.fromEntries((results ?? []).map((r: any) => [r.id, r.name]));
   }
@@ -66,8 +66,9 @@ history.get("/", async (c) => {
   return c.json(entries);
 });
 
-// Full lineage for a single quotation: quotation -> invoice -> bill
+// Full lineage for a single document: quotation -> invoice -> bill
 history.get("/chain/:type/:id", async (c) => {
+  const { accountId } = c.get("auth");
   const type = c.req.param("type");
   const id = c.req.param("id");
 
@@ -76,28 +77,34 @@ history.get("/chain/:type/:id", async (c) => {
   let bill: any = null;
 
   if (type === "quotation") {
-    quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?").bind(id).first();
+    quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+      .bind(id, accountId)
+      .first();
     if (quotation?.converted_to_invoice_id) {
-      invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?")
-        .bind(quotation.converted_to_invoice_id)
+      invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+        .bind(quotation.converted_to_invoice_id, accountId)
         .first();
     }
   } else if (type === "invoice") {
-    invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?").bind(id).first();
+    invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+      .bind(id, accountId)
+      .first();
     if (invoice?.quotation_id) {
-      quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?")
-        .bind(invoice.quotation_id)
+      quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+        .bind(invoice.quotation_id, accountId)
         .first();
     }
   } else if (type === "bill") {
-    bill = await c.env.DB.prepare("SELECT * FROM bills WHERE id = ?").bind(id).first();
+    bill = await c.env.DB.prepare("SELECT * FROM bills WHERE id = ? AND account_id = ?")
+      .bind(id, accountId)
+      .first();
     if (bill?.invoice_id) {
-      invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?")
-        .bind(bill.invoice_id)
+      invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+        .bind(bill.invoice_id, accountId)
         .first();
       if (invoice?.quotation_id) {
-        quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?")
-          .bind(invoice.quotation_id)
+        quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+          .bind(invoice.quotation_id, accountId)
           .first();
       }
     }
@@ -106,8 +113,8 @@ history.get("/chain/:type/:id", async (c) => {
   }
 
   if (invoice?.converted_to_bill_id && !bill) {
-    bill = await c.env.DB.prepare("SELECT * FROM bills WHERE id = ?")
-      .bind(invoice.converted_to_bill_id)
+    bill = await c.env.DB.prepare("SELECT * FROM bills WHERE id = ? AND account_id = ?")
+      .bind(invoice.converted_to_bill_id, accountId)
       .first();
   }
 

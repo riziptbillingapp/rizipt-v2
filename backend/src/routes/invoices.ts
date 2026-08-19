@@ -1,10 +1,12 @@
 import { Hono } from "hono";
-import type { Env } from "../types";
+import type { Env, AuthContext } from "../types";
 import { parseBody } from "../utils/http";
 import { computeTotals, normalizeItems } from "../utils/totals";
 import { nextDocNumber } from "../utils/docNumber";
+import { requireAuth, requireActiveSubscription } from "../middleware/auth";
 
-export const invoices = new Hono<{ Bindings: Env }>();
+export const invoices = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
+invoices.use("*", requireAuth, requireActiveSubscription);
 
 function parseRow(row: any) {
   if (!row) return row;
@@ -12,10 +14,11 @@ function parseRow(row: any) {
 }
 
 invoices.get("/", async (c) => {
+  const { accountId } = c.get("auth");
   const status = c.req.query("status");
   const customerId = c.req.query("customer_id");
-  let query = "SELECT * FROM invoices WHERE 1=1";
-  const values: unknown[] = [];
+  let query = "SELECT * FROM invoices WHERE account_id = ?";
+  const values: unknown[] = [accountId];
   if (status) {
     query += " AND status = ?";
     values.push(status);
@@ -30,28 +33,33 @@ invoices.get("/", async (c) => {
 });
 
 invoices.get("/:id", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
-  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?").bind(id).first();
+  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
   if (!row) return c.json({ error: "Invoice not found" }, 404);
   return c.json(parseRow(row));
 });
 
 // Direct invoice creation (no source quotation)
 invoices.post("/", async (c) => {
+  const { accountId } = c.get("auth");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
   if (!body.customer_id) return c.json({ error: "customer_id is required" }, 400);
 
   const items = normalizeItems(body.items);
   const totals = computeTotals(items);
-  const docNumber = await nextDocNumber(c.env.DB, "invoice");
+  const docNumber = await nextDocNumber(c.env.DB, accountId, "invoice");
 
   const result = await c.env.DB.prepare(
     `INSERT INTO invoices
-      (doc_number, customer_id, quotation_id, source_type, issue_date, due_date, items,
+      (account_id, doc_number, customer_id, quotation_id, source_type, issue_date, due_date, items,
        subtotal, discount_total, tax_total, grand_total, notes, terms, status, approval_status)
-     VALUES (?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
+      accountId,
       docNumber,
       body.customer_id,
       body.issue_date || new Date().toISOString().slice(0, 10),
@@ -75,10 +83,13 @@ invoices.post("/", async (c) => {
 });
 
 invoices.put("/:id", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
-  const existing = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?").bind(id).first<any>();
+  const existing = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<any>();
   if (!existing) return c.json({ error: "Invoice not found" }, 404);
   if (existing.status === "converted") {
     return c.json({ error: "Cannot edit an invoice that has already been converted to a bill" }, 409);
@@ -86,13 +97,14 @@ invoices.put("/:id", async (c) => {
 
   const items = "items" in body ? normalizeItems(body.items) : JSON.parse(existing.items || "[]");
   const totals = computeTotals(items);
+  const approvalStatus = "items" in body ? "pending" : existing.approval_status;
 
   await c.env.DB.prepare(
     `UPDATE invoices SET
       customer_id = ?, issue_date = ?, due_date = ?, items = ?,
       subtotal = ?, discount_total = ?, tax_total = ?, grand_total = ?,
-      amount_paid = ?, notes = ?, terms = ?, status = ?, updated_at = datetime('now')
-     WHERE id = ?`
+      amount_paid = ?, notes = ?, terms = ?, status = ?, approval_status = ?, updated_at = datetime('now')
+     WHERE id = ? AND account_id = ?`
   )
     .bind(
       body.customer_id ?? existing.customer_id,
@@ -107,7 +119,9 @@ invoices.put("/:id", async (c) => {
       body.notes ?? existing.notes,
       body.terms ?? existing.terms,
       body.status ?? existing.status,
-      id
+      approvalStatus,
+      id,
+      accountId
     )
     .run();
 
@@ -118,25 +132,31 @@ invoices.put("/:id", async (c) => {
 // --- Approval workflow -----------------------------------------------
 
 invoices.patch("/:id/approve", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   await c.env.DB.prepare(
-    "UPDATE invoices SET approval_status = 'approved', updated_at = datetime('now') WHERE id = ?"
+    "UPDATE invoices SET approval_status = 'approved', updated_at = datetime('now') WHERE id = ? AND account_id = ?"
   )
-    .bind(id)
+    .bind(id, accountId)
     .run();
-  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?").bind(id).first();
+  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
   if (!row) return c.json({ error: "Invoice not found" }, 404);
   return c.json(parseRow(row));
 });
 
 invoices.patch("/:id/reject", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   await c.env.DB.prepare(
-    "UPDATE invoices SET approval_status = 'rejected', updated_at = datetime('now') WHERE id = ?"
+    "UPDATE invoices SET approval_status = 'rejected', updated_at = datetime('now') WHERE id = ? AND account_id = ?"
   )
-    .bind(id)
+    .bind(id, accountId)
     .run();
-  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?").bind(id).first();
+  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
   if (!row) return c.json({ error: "Invoice not found" }, 404);
   return c.json(parseRow(row));
 });
@@ -144,10 +164,13 @@ invoices.patch("/:id/reject", async (c) => {
 // --- Conversion: Invoice -> Bill/Receipt ------------------------------
 
 invoices.post("/:id/convert-to-bill", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
-  const invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?").bind(id).first<any>();
+  const invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<any>();
   if (!invoice) return c.json({ error: "Invoice not found" }, 404);
 
   if (invoice.status === "converted") {
@@ -160,16 +183,17 @@ invoices.post("/:id/convert-to-bill", async (c) => {
     );
   }
 
-  const docNumber = await nextDocNumber(c.env.DB, "bill");
+  const docNumber = await nextDocNumber(c.env.DB, accountId, "bill");
 
   const result = await c.env.DB.prepare(
     `INSERT INTO bills
-      (doc_number, customer_id, invoice_id, source_type, issue_date, items,
+      (account_id, doc_number, customer_id, invoice_id, source_type, issue_date, items,
        subtotal, discount_total, tax_total, grand_total, payment_method, payment_reference,
        notes, status, approval_status)
-     VALUES (?, ?, ?, 'invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)`
+     VALUES (?, ?, ?, ?, 'invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)`
   )
     .bind(
+      accountId,
       docNumber,
       invoice.customer_id,
       invoice.id,
@@ -190,9 +214,9 @@ invoices.post("/:id/convert-to-bill", async (c) => {
   const billId = result.meta.last_row_id;
 
   await c.env.DB.prepare(
-    "UPDATE invoices SET status = 'converted', converted_to_bill_id = ?, amount_paid = grand_total, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE invoices SET status = 'converted', converted_to_bill_id = ?, amount_paid = grand_total, updated_at = datetime('now') WHERE id = ? AND account_id = ?"
   )
-    .bind(billId, id)
+    .bind(billId, id, accountId)
     .run();
 
   const bill = await c.env.DB.prepare("SELECT * FROM bills WHERE id = ?").bind(billId).first();
@@ -200,12 +224,15 @@ invoices.post("/:id/convert-to-bill", async (c) => {
 });
 
 invoices.delete("/:id", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
-  const existing = await c.env.DB.prepare("SELECT status FROM invoices WHERE id = ?").bind(id).first<any>();
+  const existing = await c.env.DB.prepare("SELECT status FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<any>();
   if (!existing) return c.json({ error: "Invoice not found" }, 404);
   if (existing.status === "converted") {
     return c.json({ error: "Cannot delete an invoice that has been converted to a bill" }, 409);
   }
-  await c.env.DB.prepare("DELETE FROM invoices WHERE id = ?").bind(id).run();
+  await c.env.DB.prepare("DELETE FROM invoices WHERE id = ? AND account_id = ?").bind(id, accountId).run();
   return c.json({ ok: true });
 });

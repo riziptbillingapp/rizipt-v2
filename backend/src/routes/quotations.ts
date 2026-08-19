@@ -1,10 +1,12 @@
 import { Hono } from "hono";
-import type { Env } from "../types";
+import type { Env, AuthContext } from "../types";
 import { parseBody } from "../utils/http";
 import { computeTotals, normalizeItems } from "../utils/totals";
 import { nextDocNumber } from "../utils/docNumber";
+import { requireAuth, requireActiveSubscription } from "../middleware/auth";
 
-export const quotations = new Hono<{ Bindings: Env }>();
+export const quotations = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
+quotations.use("*", requireAuth, requireActiveSubscription);
 
 function parseRow(row: any) {
   if (!row) return row;
@@ -12,10 +14,11 @@ function parseRow(row: any) {
 }
 
 quotations.get("/", async (c) => {
+  const { accountId } = c.get("auth");
   const status = c.req.query("status");
   const customerId = c.req.query("customer_id");
-  let query = "SELECT * FROM quotations WHERE 1=1";
-  const values: unknown[] = [];
+  let query = "SELECT * FROM quotations WHERE account_id = ?";
+  const values: unknown[] = [accountId];
   if (status) {
     query += " AND status = ?";
     values.push(status);
@@ -30,26 +33,31 @@ quotations.get("/", async (c) => {
 });
 
 quotations.get("/:id", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
-  const row = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?").bind(id).first();
+  const row = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
   if (!row) return c.json({ error: "Quotation not found" }, 404);
   return c.json(parseRow(row));
 });
 
 quotations.post("/", async (c) => {
+  const { accountId } = c.get("auth");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
   if (!body.customer_id) return c.json({ error: "customer_id is required" }, 400);
 
   const items = normalizeItems(body.items);
   const totals = computeTotals(items);
-  const docNumber = await nextDocNumber(c.env.DB, "quotation");
+  const docNumber = await nextDocNumber(c.env.DB, accountId, "quotation");
 
   const result = await c.env.DB.prepare(
     `INSERT INTO quotations
-      (doc_number, customer_id, issue_date, valid_until, items, subtotal, discount_total, tax_total, grand_total, notes, terms, status, approval_status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (account_id, doc_number, customer_id, issue_date, valid_until, items, subtotal, discount_total, tax_total, grand_total, notes, terms, status, approval_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
+      accountId,
       docNumber,
       body.customer_id,
       body.issue_date || new Date().toISOString().slice(0, 10),
@@ -73,10 +81,13 @@ quotations.post("/", async (c) => {
 });
 
 quotations.put("/:id", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
-  const existing = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?").bind(id).first<any>();
+  const existing = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<any>();
   if (!existing) return c.json({ error: "Quotation not found" }, 404);
   if (existing.status === "converted") {
     return c.json({ error: "Cannot edit a quotation that has already been converted to an invoice" }, 409);
@@ -84,13 +95,16 @@ quotations.put("/:id", async (c) => {
 
   const items = "items" in body ? normalizeItems(body.items) : JSON.parse(existing.items || "[]");
   const totals = computeTotals(items);
+  // Editing line items invalidates any prior approval — the approved figures
+  // wouldn't match the new totals/GST, so send it back for re-approval.
+  const approvalStatus = "items" in body ? "pending" : existing.approval_status;
 
   await c.env.DB.prepare(
     `UPDATE quotations SET
       customer_id = ?, issue_date = ?, valid_until = ?, items = ?,
       subtotal = ?, discount_total = ?, tax_total = ?, grand_total = ?,
-      notes = ?, terms = ?, status = ?, updated_at = datetime('now')
-     WHERE id = ?`
+      notes = ?, terms = ?, status = ?, approval_status = ?, updated_at = datetime('now')
+     WHERE id = ? AND account_id = ?`
   )
     .bind(
       body.customer_id ?? existing.customer_id,
@@ -104,7 +118,9 @@ quotations.put("/:id", async (c) => {
       body.notes ?? existing.notes,
       body.terms ?? existing.terms,
       body.status ?? existing.status,
-      id
+      approvalStatus,
+      id,
+      accountId
     )
     .run();
 
@@ -115,25 +131,31 @@ quotations.put("/:id", async (c) => {
 // --- Approval workflow -----------------------------------------------
 
 quotations.patch("/:id/approve", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   await c.env.DB.prepare(
-    "UPDATE quotations SET approval_status = 'approved', updated_at = datetime('now') WHERE id = ?"
+    "UPDATE quotations SET approval_status = 'approved', updated_at = datetime('now') WHERE id = ? AND account_id = ?"
   )
-    .bind(id)
+    .bind(id, accountId)
     .run();
-  const row = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?").bind(id).first();
+  const row = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
   if (!row) return c.json({ error: "Quotation not found" }, 404);
   return c.json(parseRow(row));
 });
 
 quotations.patch("/:id/reject", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   await c.env.DB.prepare(
-    "UPDATE quotations SET approval_status = 'rejected', status = 'rejected', updated_at = datetime('now') WHERE id = ?"
+    "UPDATE quotations SET approval_status = 'rejected', status = 'rejected', updated_at = datetime('now') WHERE id = ? AND account_id = ?"
   )
-    .bind(id)
+    .bind(id, accountId)
     .run();
-  const row = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?").bind(id).first();
+  const row = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
   if (!row) return c.json({ error: "Quotation not found" }, 404);
   return c.json(parseRow(row));
 });
@@ -141,10 +163,13 @@ quotations.patch("/:id/reject", async (c) => {
 // --- Conversion: Quotation -> Invoice ---------------------------------
 
 quotations.post("/:id/convert-to-invoice", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
-  const quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ?").bind(id).first<any>();
+  const quotation = await c.env.DB.prepare("SELECT * FROM quotations WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<any>();
   if (!quotation) return c.json({ error: "Quotation not found" }, 404);
 
   if (quotation.status === "converted") {
@@ -157,15 +182,16 @@ quotations.post("/:id/convert-to-invoice", async (c) => {
     );
   }
 
-  const docNumber = await nextDocNumber(c.env.DB, "invoice");
+  const docNumber = await nextDocNumber(c.env.DB, accountId, "invoice");
 
   const result = await c.env.DB.prepare(
     `INSERT INTO invoices
-      (doc_number, customer_id, quotation_id, source_type, issue_date, due_date, items,
+      (account_id, doc_number, customer_id, quotation_id, source_type, issue_date, due_date, items,
        subtotal, discount_total, tax_total, grand_total, notes, terms, status, approval_status)
-     VALUES (?, ?, ?, 'quotation', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`
+     VALUES (?, ?, ?, ?, 'quotation', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`
   )
     .bind(
+      accountId,
       docNumber,
       quotation.customer_id,
       quotation.id,
@@ -186,9 +212,9 @@ quotations.post("/:id/convert-to-invoice", async (c) => {
   const invoiceId = result.meta.last_row_id;
 
   await c.env.DB.prepare(
-    "UPDATE quotations SET status = 'converted', converted_to_invoice_id = ?, updated_at = datetime('now') WHERE id = ?"
+    "UPDATE quotations SET status = 'converted', converted_to_invoice_id = ?, updated_at = datetime('now') WHERE id = ? AND account_id = ?"
   )
-    .bind(invoiceId, id)
+    .bind(invoiceId, id, accountId)
     .run();
 
   const invoice = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ?").bind(invoiceId).first();
@@ -196,12 +222,15 @@ quotations.post("/:id/convert-to-invoice", async (c) => {
 });
 
 quotations.delete("/:id", async (c) => {
+  const { accountId } = c.get("auth");
   const id = c.req.param("id");
-  const existing = await c.env.DB.prepare("SELECT status FROM quotations WHERE id = ?").bind(id).first<any>();
+  const existing = await c.env.DB.prepare("SELECT status FROM quotations WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first<any>();
   if (!existing) return c.json({ error: "Quotation not found" }, 404);
   if (existing.status === "converted") {
     return c.json({ error: "Cannot delete a quotation that has been converted to an invoice" }, 409);
   }
-  await c.env.DB.prepare("DELETE FROM quotations WHERE id = ?").bind(id).run();
+  await c.env.DB.prepare("DELETE FROM quotations WHERE id = ? AND account_id = ?").bind(id, accountId).run();
   return c.json({ ok: true });
 });

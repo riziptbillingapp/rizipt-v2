@@ -9,3 +9,31 @@ database_id = "ff303f78-3914-4d09-a2bb-2a21c05e368a"
 
 [vars]
 ALLOWED_ORIGIN = "https://rizipt.in"
+FRONTEND_URL = "https://rizipt.in"
+GOOGLE_REDIRECT_URI = "https://api.rizipt.in/api/auth/google/callback"
+# Whichever Google account should inherit the existing migrated data (account id 1).
+# Sign in with this exact email once, and it links to your existing business instead
+# of creating a brand-new empty account.
+BOOTSTRAP_OWNER_EMAIL = "skylinnvoxel@gmail.com"
+# Comma-separated emails allowed to see /admin and approve payment claims.
+ADMIN_EMAILS = "krishiv.advt@gmail.com"
+
+# Secrets (do NOT put these in this file or commit them — set via CLI):
+#   npx wrangler secret put GOOGLE_CLIENT_ID
+#   npx wrangler secret put GOOGLE_CLIENT_SECRET
+#   npx wrangler secret put SESSION_SECRET      (any long random string, e.g. `openssl rand -hex 32`)
+#
+# Google Cloud Console setup (console.cloud.google.com > APIs & Services > Credentials):
+#   1. Create an OAuth 2.0 Client ID, type "Web application".
+#   2. Authorized redirect URI: the exact value of GOOGLE_REDIRECT_URI above.
+#   3. Copy the Client ID / Client Secret into the two secrets above.
+#
+# Deploy steps:
+#   1. wrangler d1 create rizipt_v2
+#   2. paste the returned database_id above
+#   3. wrangler d1 execute rizipt_v2 --file=./schema.sql --remote
+#   4. wrangler deploy
+#
+# Local dev:
+#   wrangler d1 execute rizipt_v2 --file=./schema.sql --local
+#   wrangler dev

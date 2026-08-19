@@ -20,20 +20,21 @@ const PREFIX_COLUMN: Record<DocKind, string> = {
  * under concurrent writers, but D1's single-writer model makes collisions
  * very unlikely in practice for this app's usage pattern.
  */
-export async function nextDocNumber(db: D1Database, kind: DocKind): Promise<string> {
+export async function nextDocNumber(db: D1Database, accountId: number, kind: DocKind): Promise<string> {
   const seqCol = SEQ_COLUMN[kind];
   const prefixCol = PREFIX_COLUMN[kind];
 
   const row = await db
-    .prepare(`SELECT ${seqCol} as seq, ${prefixCol} as prefix FROM company_profile WHERE id = 1`)
+    .prepare(`SELECT ${seqCol} as seq, ${prefixCol} as prefix FROM company_profile WHERE account_id = ?`)
+    .bind(accountId)
     .first<{ seq: number; prefix: string }>();
 
   const seq = row?.seq ?? 1;
   const prefix = row?.prefix || kind.toUpperCase().slice(0, 3);
 
   await db
-    .prepare(`UPDATE company_profile SET ${seqCol} = ? WHERE id = 1`)
-    .bind(seq + 1)
+    .prepare(`UPDATE company_profile SET ${seqCol} = ? WHERE account_id = ?`)
+    .bind(seq + 1, accountId)
     .run();
 
   const padded = String(seq).padStart(4, "0");
