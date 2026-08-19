@@ -7,7 +7,9 @@ import PreviewModal from "../components/PreviewModal.jsx";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function CreateQuotationModal({ open, onClose, onCreated, customers, products }) {
+/** Handles both "New quotation" and "Edit quotation" — same form, different submit call. */
+function QuotationFormModal({ open, onClose, onSaved, customers, products, editingDoc }) {
+  const isEdit = !!editingDoc;
   const [customerId, setCustomerId] = useState("");
   const [issueDate, setIssueDate] = useState(today());
   const [validUntil, setValidUntil] = useState("");
@@ -18,7 +20,15 @@ function CreateQuotationModal({ open, onClose, onCreated, customers, products })
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (editingDoc) {
+      setCustomerId(String(editingDoc.customer_id));
+      setIssueDate(editingDoc.issue_date || today());
+      setValidUntil(editingDoc.valid_until || "");
+      setNotes(editingDoc.notes || "");
+      setItems(editingDoc.items?.length ? editingDoc.items : [emptyLine()]);
+      setError("");
+    } else {
       api
         .getCompany()
         .then((c) => {
@@ -33,7 +43,7 @@ function CreateQuotationModal({ open, onClose, onCreated, customers, products })
       setNotes("");
       setError("");
     }
-  }, [open]);
+  }, [open, editingDoc]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -41,15 +51,19 @@ function CreateQuotationModal({ open, onClose, onCreated, customers, products })
     setSaving(true);
     setError("");
     try {
-      await api.createQuotation({
+      const payload = {
         customer_id: Number(customerId),
         issue_date: issueDate,
         valid_until: validUntil || null,
         notes,
         items,
-        status: "sent",
-      });
-      onCreated();
+      };
+      if (isEdit) {
+        await api.updateQuotation(editingDoc.id, payload);
+      } else {
+        await api.createQuotation({ ...payload, status: "sent" });
+      }
+      onSaved();
       onClose();
     } catch (e) {
       setError(e.message);
@@ -59,7 +73,12 @@ function CreateQuotationModal({ open, onClose, onCreated, customers, products })
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="New quotation" wide>
+    <Modal open={open} onClose={onClose} title={isEdit ? `Edit quotation ${editingDoc.doc_number}` : "New quotation"} wide>
+      {isEdit && (
+        <p className="mb-3 text-xs text-ledger-amber">
+          Saving changes will reset this quotation's approval status back to pending, since the totals may change.
+        </p>
+      )}
       {error && <div className="mb-3 rounded-md bg-ledger-red/10 px-3 py-2 text-sm text-ledger-red">{error}</div>}
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-3 gap-3">
@@ -96,7 +115,7 @@ function CreateQuotationModal({ open, onClose, onCreated, customers, products })
             Cancel
           </button>
           <button type="submit" className="btn-primary" disabled={saving}>
-            {saving ? "Creating…" : "Create quotation"}
+            {saving ? "Saving…" : isEdit ? "Save changes" : "Create quotation"}
           </button>
         </div>
       </form>
@@ -104,7 +123,7 @@ function CreateQuotationModal({ open, onClose, onCreated, customers, products })
   );
 }
 
-function QuotationDetailModal({ id, open, onClose, onChanged, customers }) {
+function QuotationDetailModal({ id, open, onClose, onChanged, customers, onEdit }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -133,7 +152,24 @@ function QuotationDetailModal({ id, open, onClose, onChanged, customers }) {
     }
   };
 
+  const remove = async () => {
+    if (!confirm(`Delete quotation ${doc.doc_number}? This can't be undone.`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteQuotation(doc.id);
+      onChanged();
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!doc) return open ? <Modal open={open} onClose={onClose} title="Quotation">Loading…</Modal> : null;
+
+  const isEditable = doc.status !== "converted";
 
   return (
     <Modal open={open} onClose={onClose} title={`Quotation ${doc.doc_number}`} wide>
@@ -174,7 +210,8 @@ function QuotationDetailModal({ id, open, onClose, onChanged, customers }) {
           <tbody>
             {doc.items.map((it, idx) => {
               const gross = it.quantity * it.unit_price;
-              const net = Math.max(gross - it.discount, 0);
+              const discountAmt = gross * ((it.discount_percent || 0) / 100);
+              const net = Math.max(gross - discountAmt, 0);
               const total = net + net * (it.tax_rate / 100);
               return (
                 <tr key={idx} className="border-t border-paper-line">
@@ -209,6 +246,11 @@ function QuotationDetailModal({ id, open, onClose, onChanged, customers }) {
         <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
           Preview / Download PDF
         </button>
+        {isEditable && (
+          <button className="btn-secondary" disabled={busy} onClick={() => onEdit(doc)}>
+            Edit
+          </button>
+        )}
         {doc.approval_status === "pending" && (
           <>
             <button
@@ -232,6 +274,11 @@ function QuotationDetailModal({ id, open, onClose, onChanged, customers }) {
             Convert to invoice
           </button>
         )}
+        {isEditable && (
+          <button className="btn-danger ml-auto" disabled={busy} onClick={remove}>
+            Delete
+          </button>
+        )}
       </div>
 
       <PreviewModal
@@ -249,7 +296,8 @@ export default function Quotations() {
   const [quotations, setQuotations] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingDoc, setEditingDoc] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [error, setError] = useState("");
 
@@ -263,6 +311,17 @@ export default function Quotations() {
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || "—";
 
+  const openCreate = () => {
+    setEditingDoc(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (doc) => {
+    setDetailId(null);
+    setEditingDoc(doc);
+    setFormOpen(true);
+  };
+
   return (
     <div>
       <header className="mb-6 flex items-center justify-between">
@@ -270,7 +329,7 @@ export default function Quotations() {
           <h1 className="font-display text-2xl font-semibold text-ink">Quotations</h1>
           <p className="text-sm text-ink-soft">Approve a quotation, then convert it straight into an invoice.</p>
         </div>
-        <button className="btn-primary" onClick={() => setCreateOpen(true)} disabled={customers.length === 0}>
+        <button className="btn-primary" onClick={openCreate} disabled={customers.length === 0}>
           + New quotation
         </button>
       </header>
@@ -322,12 +381,13 @@ export default function Quotations() {
         </table>
       </div>
 
-      <CreateQuotationModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={load}
+      <QuotationFormModal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        onSaved={load}
         customers={customers}
         products={products}
+        editingDoc={editingDoc}
       />
       <QuotationDetailModal
         id={detailId}
@@ -335,6 +395,7 @@ export default function Quotations() {
         onClose={() => setDetailId(null)}
         onChanged={load}
         customers={customers}
+        onEdit={openEdit}
       />
     </div>
   );
