@@ -77,4 +77,16 @@ export const api = {
   // Billing history
   listHistory: (customerId) => get(`/api/billing-history${customerId ? `?customer_id=${customerId}` : ""}`),
   getChain: (type, id) => get(`/api/billing-history/chain/${type}/${id}`),
+
+  // Auth
+  me: () => get("/api/auth/me"),
+  logout: () => post("/api/auth/logout"),
+  googleLoginUrl: () => `${BASE_URL}/api/auth/google/start`,
+
+  // Subscription / billing
+  getBillingStatus: () => get("/api/billing/status"),
+  submitPaymentClaim: (body) => post("/api/billing/claim", body),
+  adminListClaims: () => get("/api/billing/admin/claims"),
+  adminApproveClaim: (id) => patch(`/api/billing/admin/claims/${id}/approve`),
+  adminRejectClaim: (id) => patch(`/api/billing/admin/claims/${id}/reject`),
 };
