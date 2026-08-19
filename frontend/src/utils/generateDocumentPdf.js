@@ -6,12 +6,14 @@ import { hexToRgb, DEFAULT_BRAND_COLOR } from "./color.js";
 
 const TITLE = { quotation: "QUOTATION", invoice: "TAX INVOICE", bill: "RECEIPT" };
 const DATE_LABEL = { quotation: "Valid Till", invoice: "Due Date", bill: "Payment Date" };
+const TOTAL_LABEL = { quotation: "Net Payable", invoice: "Net Payable", bill: "Amount Received" };
 
 const INK = [28, 36, 48];
 const INK_SOFT = [86, 95, 110];
 const LINE = [231, 224, 208];
 const WHITE = [255, 255, 255];
 const GREEN = [47, 111, 78];
+const GREEN_TINT = [235, 245, 239];
 const RED = [184, 67, 59];
 
 function fmtDate(d) {
@@ -257,12 +259,40 @@ export async function generateDocumentPdf({ docType, doc, company, customer }) {
   pdf.setLineWidth(1.2);
   pdf.line(totalsX, totalsY - 4, pageWidth - margin, totalsY - 4);
   totalsY += 6;
-  totalRow("Net Payable", `Rs. ${money(doc.grand_total)}`, { bold: true, size: 12, color: NAVY });
+  totalRow(TOTAL_LABEL[docType], `Rs. ${money(doc.grand_total)}`, { bold: true, size: 12, color: NAVY });
 
   y = totalsY + 14;
 
-  // --- Payment details ---
-  if (company?.bank_name || company?.upi_id) {
+  // --- Payment details: a receipt records money already received (no QR — that
+  // would ask the customer to pay again); a quotation/invoice shows how to pay. ---
+  const isReceipt = docType === "bill";
+
+  if (isReceipt) {
+    const boxHeight = 34;
+    pdf.setFillColor(...GREEN_TINT);
+    pdf.setDrawColor(...GREEN);
+    pdf.setLineWidth(0.75);
+    pdf.roundedRect(margin, y, contentWidth, boxHeight, 4, 4, "FD");
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7);
+    pdf.setTextColor(...GREEN);
+    pdf.text("PAYMENT RECEIVED", margin + 12, y + 14);
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(...INK);
+    const method = (doc.payment_method || "cash").replace("_", " ");
+    const refText = doc.payment_reference ? `  ·  Ref: ${doc.payment_reference}` : "";
+    pdf.text(`Via ${method}${refText}`, margin + 12, y + 26);
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(...GREEN);
+    pdf.text("PAID IN FULL", pageWidth - margin - 12, y + 20, { align: "right" });
+
+    y += boxHeight + 12;
+  } else if (company?.bank_name || company?.upi_id) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(7);
     pdf.setTextColor(...GREEN);
