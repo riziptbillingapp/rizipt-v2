@@ -33,12 +33,20 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, account, loading, refresh, signOut }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider
+      value={{ user, account, loading, refresh, signOut }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+
+  if (!ctx) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
+
   return ctx;
 }

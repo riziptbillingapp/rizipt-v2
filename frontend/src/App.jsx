@@ -19,8 +19,11 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        {/* Public pages */}
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+
+        {/* Protected application */}
         <Route
           element={
             <ProtectedRoute>
