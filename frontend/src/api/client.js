@@ -40,11 +40,18 @@ export const api = {
   archiveCustomer: (id) => del(`/api/customers/${id}`),
 
   // Products
-  listProducts: (search) => get(`/api/products${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  listProducts: (search, itemType) => {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (itemType) params.set("item_type", itemType);
+    const qs = params.toString();
+    return get(`/api/products${qs ? `?${qs}` : ""}`);
+  },
   getProduct: (id) => get(`/api/products/${id}`),
   createProduct: (body) => post("/api/products", body),
   updateProduct: (id, body) => put(`/api/products/${id}`, body),
   archiveProduct: (id) => del(`/api/products/${id}`),
+  importProducts: (items) => post("/api/products/import", { items }),
 
   // Quotations
   listQuotations: () => get("/api/quotations"),

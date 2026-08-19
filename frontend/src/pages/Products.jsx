@@ -1,26 +1,42 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import Modal from "../components/Modal.jsx";
+import ImportProductsModal from "../components/ImportProductsModal.jsx";
 import { money } from "../components/ItemsEditor.jsx";
 
-const emptyForm = { name: "", sku: "", hsn_sac: "", description: "", unit: "unit", price: 0, tax_rate: 0 };
+const emptyForm = {
+  name: "",
+  item_type: "product",
+  sku: "",
+  hsn_sac: "",
+  description: "",
+  unit: "unit",
+  price: 0,
+  tax_rate: 0,
+};
 
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all"); // all | product | service
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const load = () => api.listProducts(search).then(setProducts).catch((e) => setError(e.message));
+  const load = () =>
+    api
+      .listProducts(search, typeFilter === "all" ? undefined : typeFilter)
+      .then(setProducts)
+      .catch((e) => setError(e.message));
 
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [typeFilter]);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -36,7 +52,7 @@ export default function Products() {
 
   const openEdit = (product) => {
     setEditingId(product.id);
-    setForm(product);
+    setForm({ ...emptyForm, ...product });
     setModalOpen(true);
   };
 
@@ -57,7 +73,7 @@ export default function Products() {
   };
 
   const archive = async (id) => {
-    if (!confirm("Archive this product?")) return;
+    if (!confirm("Archive this item?")) return;
     await api.archiveProduct(id);
     load();
   };
@@ -66,26 +82,51 @@ export default function Products() {
     <div>
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-ink">Products</h1>
+          <h1 className="font-display text-2xl font-semibold text-ink">Products / Services</h1>
           <p className="text-sm text-ink-soft">Catalog items you can drop straight into a document.</p>
         </div>
-        <button className="btn-primary" onClick={openCreate}>
-          + New product
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setImportOpen(true)}>
+            Import CSV
+          </button>
+          <button className="btn-primary" onClick={openCreate}>
+            + New item
+          </button>
+        </div>
       </header>
 
-      <input
-        className="field-input mb-4 max-w-sm"
-        placeholder="Search products…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <input
+          className="field-input max-w-sm"
+          placeholder="Search products / services…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="flex gap-2">
+          {["all", "product", "service"].map((t) => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium capitalize ${
+                typeFilter === t
+                  ? "border-ink bg-ink text-paper"
+                  : "border-paper-line bg-white text-ink-soft hover:border-ink/40"
+              }`}
+            >
+              {t === "all" ? "All" : `${t}s`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && <div className="mb-4 rounded-md bg-ledger-red/10 px-4 py-2 text-sm text-ledger-red">{error}</div>}
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-paper text-left text-xs uppercase tracking-wide text-ink-soft">
             <tr>
               <th className="px-4 py-3 font-semibold">Name</th>
+              <th className="px-4 py-3 font-semibold">Type</th>
               <th className="px-4 py-3 font-semibold">SKU</th>
               <th className="px-4 py-3 font-semibold">HSN/SAC</th>
               <th className="px-4 py-3 font-semibold">Unit</th>
@@ -98,6 +139,15 @@ export default function Products() {
             {products.map((p) => (
               <tr key={p.id} className="border-t border-paper-line hover:bg-paper/60">
                 <td className="px-4 py-3 font-medium text-ink">{p.name}</td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${
+                      p.item_type === "service" ? "bg-ledger-navy/10 text-ledger-navy" : "bg-ledger-green/10 text-ledger-green"
+                    }`}
+                  >
+                    {p.item_type || "product"}
+                  </span>
+                </td>
                 <td className="px-4 py-3 font-mono text-xs text-ink-soft">{p.sku || "—"}</td>
                 <td className="px-4 py-3 font-mono text-xs text-ink-soft">{p.hsn_sac || "—"}</td>
                 <td className="px-4 py-3 text-ink-soft">{p.unit}</td>
@@ -118,8 +168,8 @@ export default function Products() {
             ))}
             {!loading && products.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
-                  No products yet.
+                <td colSpan={8} className="px-4 py-8 text-center text-ink-soft">
+                  Nothing here yet. Add one manually, or import a CSV if you have a lot to add.
                 </td>
               </tr>
             )}
@@ -127,9 +177,28 @@ export default function Products() {
         </table>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? "Edit product" : "New product"}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? "Edit item" : "New item"}>
         {error && <div className="mb-3 rounded-md bg-ledger-red/10 px-3 py-2 text-sm text-ledger-red">{error}</div>}
         <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label className="field-label">Type</label>
+            <div className="flex gap-2">
+              {["product", "service"].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setForm({ ...form, item_type: t })}
+                  className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium capitalize ${
+                    form.item_type === t
+                      ? "border-ledger-navy bg-ledger-navy/5 text-ledger-navy"
+                      : "border-paper-line bg-white text-ink-soft"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <label className="field-label">Name *</label>
             <input
@@ -161,7 +230,7 @@ export default function Products() {
             <label className="field-label">HSN/SAC code</label>
             <input
               className="field-input"
-              placeholder="e.g. 998361"
+              placeholder={form.item_type === "service" ? "e.g. 9983" : "e.g. 998361"}
               value={form.hsn_sac || ""}
               onChange={(e) => setForm({ ...form, hsn_sac: e.target.value })}
             />
@@ -202,11 +271,13 @@ export default function Products() {
               Cancel
             </button>
             <button type="submit" className="btn-primary">
-              {editingId ? "Save changes" : "Create product"}
+              {editingId ? "Save changes" : "Create item"}
             </button>
           </div>
         </form>
       </Modal>
+
+      <ImportProductsModal open={importOpen} onClose={() => setImportOpen(false)} onImported={load} />
     </div>
   );
 }

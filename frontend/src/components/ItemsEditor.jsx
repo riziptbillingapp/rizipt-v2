@@ -98,7 +98,7 @@ export default function ItemsEditor({ items, onChange, products = [], defaultTax
                         <option value="">Custom line item…</option>
                         {products.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name}
+                            {p.name} {p.item_type === "service" ? "(service)" : ""}
                           </option>
                         ))}
                       </select>

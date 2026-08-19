@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS products (
   name TEXT NOT NULL,
   sku TEXT,
   hsn_sac TEXT,
+  item_type TEXT DEFAULT 'product',
   description TEXT,
   unit TEXT NOT NULL DEFAULT 'unit',
   price REAL NOT NULL DEFAULT 0,
