@@ -14,7 +14,10 @@ import Products from "./pages/Products.jsx";
 import CompanyProfile from "./pages/CompanyProfile.jsx";
 import Subscription from "./pages/Subscription.jsx";
 import Admin from "./pages/Admin.jsx";
-
+import LetterheadsListPage from "./pages/LetterheadsListPage.jsx";
+import LetterheadFormPage from "./pages/LetterheadFormPage.jsx";
+import ProjectStatusReportsListPage from "./pages/ProjectStatusReportsListPage.jsx";
+import ProjectStatusReportFormPage from "./pages/ProjectStatusReportFormPage.jsx";
 export default function App() {
   return (
     <AuthProvider>
@@ -22,7 +25,6 @@ export default function App() {
         {/* Public pages */}
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
-
         {/* Protected application */}
         <Route
           element={
@@ -39,6 +41,12 @@ export default function App() {
           <Route path="/customers" element={<Customers />} />
           <Route path="/products" element={<Products />} />
           <Route path="/company-profile" element={<CompanyProfile />} />
+          <Route path="/letterheads" element={<LetterheadsListPage />} />
+          <Route path="/letterheads/new" element={<LetterheadFormPage />} />
+          <Route path="/letterheads/:id/edit" element={<LetterheadFormPage />} />
+          <Route path="/project-status-reports" element={<ProjectStatusReportsListPage />} />
+          <Route path="/project-status-reports/new" element={<ProjectStatusReportFormPage />} />
+          <Route path="/project-status-reports/:id/edit" element={<ProjectStatusReportFormPage />} />
           <Route path="/subscription" element={<Subscription />} />
           <Route path="/admin" element={<Admin />} />
         </Route>
