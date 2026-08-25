@@ -101,7 +101,8 @@ export const api = {
   deleteProjectStatusReport: (id) =>
     del(`/api/project-status-reports/${id}`),
 
-  // Auth  me: () => get("/api/auth/me"),
+  // Auth  
+  me: () => get("/api/auth/me"),
   logout: () => post("/api/auth/logout"),
   googleLoginUrl: () => `${BASE_URL}/api/auth/google/start`,
 
