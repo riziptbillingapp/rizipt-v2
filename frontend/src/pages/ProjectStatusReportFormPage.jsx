@@ -1,28 +1,18 @@
-// pages/ProjectStatusReportFormPage.jsx
-// Route at /project-status-reports/new and /project-status-reports/:id/edit
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { api } from "../api/client.js";
 
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { projectStatusReportsApi } from '../api/newModules';
-
-const emptyItem = () => ({
-  task_name: '',
-  owner: '',
-  status: 'in_progress',
-  completion: 0,
-  due_date: '',
-  notes: '',
-});
+const emptyItem = () => ({ task_name: "", owner: "", status: "in_progress", completion: 0, due_date: "", notes: "" });
 
 const emptyForm = {
-  project_name: '',
-  report_date: new Date().toISOString().slice(0, 10),
-  period_from: '',
-  period_to: '',
-  overall_status: 'on_track',
-  summary: '',
-  prepared_by: '',
-  status: 'draft',
+  project_name: "",
+  issue_date: new Date().toISOString().slice(0, 10),
+  period_from: "",
+  period_to: "",
+  overall_status: "on_track",
+  summary: "",
+  prepared_by: "",
+  status: "draft",
   items: [emptyItem()],
 };
 
@@ -30,13 +20,10 @@ function LiveCompletionBar({ percent }) {
   const pct = Math.max(0, Math.min(100, Math.round(percent || 0)));
   return (
     <div className="flex items-center gap-3">
-      <div className="flex-1 h-3 rounded-full bg-gray-200 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-gray-900 transition-all"
-          style={{ width: `${pct}%` }}
-        />
+      <div className="h-3 flex-1 overflow-hidden rounded-full bg-paper-line">
+        <div className="h-full rounded-full bg-ink transition-all" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-sm font-medium text-gray-700 w-10 text-right">{pct}%</span>
+      <span className="w-10 text-right text-sm font-medium text-ink">{pct}%</span>
     </div>
   );
 }
@@ -47,12 +34,14 @@ export default function ProjectStatusReportFormPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (isEdit) {
-      projectStatusReportsApi.get(id).then((r) =>
-        setForm({ ...r, items: r.items?.length ? r.items : [emptyItem()] })
-      );
+      api
+        .getProjectStatusReport(id)
+        .then((r) => setForm({ ...r, items: r.items?.length ? r.items : [emptyItem()] }))
+        .catch((e) => setError(e.message));
     }
   }, [id]);
 
@@ -61,9 +50,7 @@ export default function ProjectStatusReportFormPage() {
     return form.items.reduce((sum, it) => sum + (Number(it.completion) || 0), 0) / form.items.length;
   }, [form.items]);
 
-  function set(field, value) {
-    setForm((f) => ({ ...f, [field]: value }));
-  }
+  const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
   function setItem(index, field, value) {
     setForm((f) => {
@@ -84,55 +71,46 @@ export default function ProjectStatusReportFormPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
+    setError("");
     try {
       const payload = { ...form, items: form.items.filter((it) => it.task_name.trim()) };
       if (isEdit) {
-        await projectStatusReportsApi.update(id, payload);
+        await api.updateProjectStatusReport(id, payload);
       } else {
-        await projectStatusReportsApi.create(payload);
+        await api.createProjectStatusReport(payload);
       }
-      navigate('/project-status-reports');
+      navigate("/project-status-reports");
+    } catch (e) {
+      setError(e.message);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <h1 className="text-xl font-semibold text-gray-900 mb-6">
-        {isEdit ? 'Edit Status Report' : 'New Project Status Report'}
-      </h1>
+    <div className="max-w-3xl">
+      <header className="mb-6">
+        <h1 className="font-display text-2xl font-semibold text-ink">
+          {isEdit ? "Edit Status Report" : "New Project Status Report"}
+        </h1>
+      </header>
+
+      {error && <div className="mb-4 rounded-md bg-ledger-red/10 px-4 py-2 text-sm text-ledger-red">{error}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="card grid grid-cols-2 gap-4 p-6">
           <div className="col-span-2">
-            <label className="text-sm font-medium text-gray-700">Project Name</label>
-            <input
-              type="text"
-              value={form.project_name}
-              onChange={(e) => set('project_name', e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              required
-            />
+            <label className="field-label">Project Name</label>
+            <input className="field-input" value={form.project_name} onChange={(e) => update("project_name", e.target.value)} required />
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Report Date</label>
-            <input
-              type="date"
-              value={form.report_date}
-              onChange={(e) => set('report_date', e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              required
-            />
+            <label className="field-label">Report Date</label>
+            <input type="date" className="field-input" value={form.issue_date} onChange={(e) => update("issue_date", e.target.value)} required />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Overall Status</label>
-            <select
-              value={form.overall_status}
-              onChange={(e) => set('overall_status', e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
+            <label className="field-label">Overall Status</label>
+            <select className="field-input" value={form.overall_status} onChange={(e) => update("overall_status", e.target.value)}>
               <option value="on_track">On Track</option>
               <option value="at_risk">At Risk</option>
               <option value="delayed">Delayed</option>
@@ -141,78 +119,55 @@ export default function ProjectStatusReportFormPage() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Period From</label>
-            <input
-              type="date"
-              value={form.period_from || ''}
-              onChange={(e) => set('period_from', e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
+            <label className="field-label">Period From</label>
+            <input type="date" className="field-input" value={form.period_from || ""} onChange={(e) => update("period_from", e.target.value)} />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Period To</label>
-            <input
-              type="date"
-              value={form.period_to || ''}
-              onChange={(e) => set('period_to', e.target.value)}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
+            <label className="field-label">Period To</label>
+            <input type="date" className="field-input" value={form.period_to || ""} onChange={(e) => update("period_to", e.target.value)} />
+          </div>
+
+          <div className="col-span-2">
+            <label className="field-label">Prepared By</label>
+            <input className="field-input" value={form.prepared_by || ""} onChange={(e) => update("prepared_by", e.target.value)} />
           </div>
         </div>
 
-        {/* Live overall completion preview — recomputed as the average of
-            task completions below, same value the backend recomputes on save. */}
-        <div className="rounded-xl border border-gray-200 p-4 bg-gray-50">
-          <div className="text-sm font-medium text-gray-700 mb-2">Overall Completion (auto)</div>
+        <div className="card p-4">
+          <div className="mb-2 text-sm font-medium text-ink">Overall Completion (auto)</div>
           <LiveCompletionBar percent={overallCompletion} />
         </div>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700">Summary (optional)</label>
-          <textarea
-            value={form.summary || ''}
-            onChange={(e) => set('summary', e.target.value)}
-            rows={3}
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
+        <div className="card p-6">
+          <label className="field-label">Summary (optional)</label>
+          <textarea className="field-input" rows={3} value={form.summary || ""} onChange={(e) => update("summary", e.target.value)} />
         </div>
 
-        {/* --- Milestones / tasks --- */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-gray-700">Milestones / Tasks</label>
-            <button
-              type="button"
-              onClick={addItem}
-              className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
-            >
+          <div className="mb-2 flex items-center justify-between">
+            <label className="field-label mb-0">Milestones / Tasks</label>
+            <button type="button" onClick={addItem} className="btn-secondary text-xs">
               + Add Task
             </button>
           </div>
 
           <div className="space-y-3">
             {form.items.map((it, index) => (
-              <div key={index} className="rounded-lg border border-gray-200 p-3 space-y-2">
+              <div key={index} className="card space-y-2 p-3">
                 <div className="grid grid-cols-12 gap-2">
                   <input
-                    type="text"
+                    className="field-input col-span-5"
                     placeholder="Task name"
                     value={it.task_name}
-                    onChange={(e) => setItem(index, 'task_name', e.target.value)}
-                    className="col-span-5 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    onChange={(e) => setItem(index, "task_name", e.target.value)}
                   />
                   <input
-                    type="text"
+                    className="field-input col-span-3"
                     placeholder="Owner"
                     value={it.owner}
-                    onChange={(e) => setItem(index, 'owner', e.target.value)}
-                    className="col-span-3 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    onChange={(e) => setItem(index, "owner", e.target.value)}
                   />
-                  <select
-                    value={it.status}
-                    onChange={(e) => setItem(index, 'status', e.target.value)}
-                    className="col-span-2 rounded border border-gray-300 px-2 py-1.5 text-sm"
-                  >
+                  <select className="field-input col-span-2" value={it.status} onChange={(e) => setItem(index, "status", e.target.value)}>
                     <option value="not_started">Not Started</option>
                     <option value="in_progress">In Progress</option>
                     <option value="blocked">Blocked</option>
@@ -220,9 +175,9 @@ export default function ProjectStatusReportFormPage() {
                   </select>
                   <input
                     type="date"
-                    value={it.due_date || ''}
-                    onChange={(e) => setItem(index, 'due_date', e.target.value)}
-                    className="col-span-2 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="field-input col-span-2"
+                    value={it.due_date || ""}
+                    onChange={(e) => setItem(index, "due_date", e.target.value)}
                   />
                 </div>
 
@@ -232,15 +187,11 @@ export default function ProjectStatusReportFormPage() {
                     min={0}
                     max={100}
                     value={it.completion}
-                    onChange={(e) => setItem(index, 'completion', Number(e.target.value))}
+                    onChange={(e) => setItem(index, "completion", Number(e.target.value))}
                     className="flex-1"
                   />
                   <LiveCompletionBar percent={it.completion} />
-                  <button
-                    type="button"
-                    onClick={() => removeItem(index)}
-                    className="text-xs text-red-600 hover:underline shrink-0"
-                  >
+                  <button type="button" onClick={() => removeItem(index)} className="shrink-0 text-xs text-ledger-red hover:underline">
                     Remove
                   </button>
                 </div>
@@ -250,23 +201,14 @@ export default function ProjectStatusReportFormPage() {
         </div>
 
         <div className="flex justify-end gap-3 pt-2">
-          <button
-            type="button"
-            onClick={() => navigate('/project-status-reports')}
-            className="px-4 py-2 rounded-lg border border-gray-300 text-sm"
-          >
+          <button type="button" className="btn-secondary" onClick={() => navigate("/project-status-reports")}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Report'}
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving ? "Saving…" : isEdit ? "Save Changes" : "Create Report"}
           </button>
         </div>
       </form>
     </div>
   );
 }
-

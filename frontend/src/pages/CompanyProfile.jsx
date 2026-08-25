@@ -40,9 +40,42 @@ const NUMBERING_FIELDS = [
   ["quotation_prefix", "Quotation prefix"],
   ["invoice_prefix", "Invoice prefix"],
   ["bill_prefix", "Bill/receipt prefix"],
+  ["letterhead_prefix", "Letterhead prefix"],
+  ["psr_prefix", "Status report prefix"],
   ["default_tax_rate", "Default tax rate %"],
   ["currency", "Currency"],
 ];
+
+// Same upload pattern as the Logo block, parameterized so Logo/Seal/Signature
+// don't repeat three near-identical blocks of JSX below.
+function ImageUploadCard({ title, hint, field, value, uploading, onSelect, onRemove }) {
+  return (
+    <div className="card p-6">
+      <h2 className="mb-3 font-display text-base font-semibold text-ink">{title}</h2>
+      <div className="flex items-center gap-4">
+        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-paper-line bg-paper">
+          {value ? (
+            <img src={value} alt={title} className="h-full w-full object-contain" />
+          ) : (
+            <span className="text-xs text-ink-soft">None</span>
+          )}
+        </div>
+        <div>
+          <label className="btn-secondary cursor-pointer">
+            {uploading ? "Processing…" : `Upload ${title.toLowerCase()}`}
+            <input type="file" accept="image/*" className="hidden" onChange={onSelect} />
+          </label>
+          {value && (
+            <button type="button" className="ml-3 text-xs font-medium text-ledger-red hover:underline" onClick={onRemove}>
+              Remove
+            </button>
+          )}
+          <p className="mt-2 text-xs text-ink-soft">{hint}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function CompanyProfile() {
   const [form, setForm] = useState(null);
@@ -50,6 +83,8 @@ export default function CompanyProfile() {
   const [savedAt, setSavedAt] = useState(null);
   const [error, setError] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
+  const [sealUploading, setSealUploading] = useState(false);
+  const [signatureUploading, setSignatureUploading] = useState(false);
   const [qrPreview, setQrPreview] = useState(null);
 
   useEffect(() => {
@@ -64,24 +99,32 @@ export default function CompanyProfile() {
 
   const update = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
-  const onLogoSelected = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file for the logo.");
-      return;
-    }
-    setLogoUploading(true);
-    setError("");
-    try {
-      const dataUrl = await fileToCompressedDataUrl(file, 320, 0.85);
-      update("logo_url", dataUrl);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLogoUploading(false);
-    }
-  };
+  function makeImageHandler(field, setUploading, { maxDim = 320 } = {}) {
+    return async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setError(`Please choose an image file for ${field.replace("_url", "")}.`);
+        return;
+      }
+      setUploading(true);
+      setError("");
+      try {
+        const dataUrl = await fileToCompressedDataUrl(file, maxDim, 0.9);
+        update(field, dataUrl);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setUploading(false);
+      }
+    };
+  }
+
+  const onLogoSelected = makeImageHandler("logo_url", setLogoUploading, { maxDim: 320 });
+  // Seals/signatures are usually small stamps/scrawls — a smaller maxDim keeps
+  // the stored data URI compact while still looking crisp at document size.
+  const onSealSelected = makeImageHandler("seal_url", setSealUploading, { maxDim: 240 });
+  const onSignatureSelected = makeImageHandler("signature_url", setSignatureUploading, { maxDim: 240 });
 
   const save = async (e) => {
     e.preventDefault();
@@ -111,46 +154,45 @@ export default function CompanyProfile() {
       <header className="mb-6">
         <h1 className="font-display text-2xl font-semibold text-ink">Company Profile</h1>
         <p className="text-sm text-ink-soft">
-          Shown on every quotation, invoice, and receipt you issue.
+          Shown on every quotation, invoice, receipt, letterhead, and status report you issue.
         </p>
       </header>
 
       {error && <div className="mb-4 rounded-md bg-ledger-red/10 px-4 py-2 text-sm text-ledger-red">{error}</div>}
 
       <form onSubmit={save} className="space-y-6">
-        <div className="card p-6">
-          <h2 className="mb-3 font-display text-base font-semibold text-ink">Logo</h2>
-          <div className="flex items-center gap-4">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-paper-line bg-paper">
-              {form.logo_url ? (
-                <img src={form.logo_url} alt="Company logo" className="h-full w-full object-contain" />
-              ) : (
-                <span className="text-xs text-ink-soft">No logo</span>
-              )}
-            </div>
-            <div>
-              <label className="btn-secondary cursor-pointer">
-                {logoUploading ? "Processing…" : "Upload logo"}
-                <input type="file" accept="image/*" className="hidden" onChange={onLogoSelected} />
-              </label>
-              {form.logo_url && (
-                <button
-                  type="button"
-                  className="ml-3 text-xs font-medium text-ledger-red hover:underline"
-                  onClick={() => update("logo_url", "")}
-                >
-                  Remove
-                </button>
-              )}
-              <p className="mt-2 text-xs text-ink-soft">PNG or JPG. Resized automatically for documents.</p>
-            </div>
-          </div>
+        <div className="grid grid-cols-3 gap-6">
+          <ImageUploadCard
+            title="Logo"
+            hint="PNG or JPG. Resized automatically for documents."
+            value={form.logo_url}
+            uploading={logoUploading}
+            onSelect={onLogoSelected}
+            onRemove={() => update("logo_url", "")}
+          />
+          <ImageUploadCard
+            title="Seal"
+            hint="Company stamp/seal, shown next to the signature on documents."
+            value={form.seal_url}
+            uploading={sealUploading}
+            onSelect={onSealSelected}
+            onRemove={() => update("seal_url", "")}
+          />
+          <ImageUploadCard
+            title="Signature"
+            hint="Scanned or photographed signature, shown above the signature line."
+            value={form.signature_url}
+            uploading={signatureUploading}
+            onSelect={onSignatureSelected}
+            onRemove={() => update("signature_url", "")}
+          />
         </div>
 
         <div className="card p-6">
           <h2 className="mb-1 font-display text-base font-semibold text-ink">Document theme color</h2>
           <p className="mb-3 text-xs text-ink-soft">
-            Used for headings, the item table header, and totals on your quotations, invoices, and receipts.
+            Used for headings, the item table header, and totals on your quotations, invoices, receipts, letterheads,
+            and status reports.
           </p>
           <div className="flex items-center gap-4">
             <input
@@ -186,11 +228,7 @@ export default function CompanyProfile() {
             {FIELDS.map(([field, label]) => (
               <div key={field}>
                 <label className="field-label">{label}</label>
-                <input
-                  className="field-input"
-                  value={form[field] ?? ""}
-                  onChange={(e) => update(field, e.target.value)}
-                />
+                <input className="field-input" value={form[field] ?? ""} onChange={(e) => update(field, e.target.value)} />
               </div>
             ))}
           </div>
@@ -234,18 +272,16 @@ export default function CompanyProfile() {
             {NUMBERING_FIELDS.map(([field, label]) => (
               <div key={field}>
                 <label className="field-label">{label}</label>
-                <input
-                  className="field-input"
-                  value={form[field] ?? ""}
-                  onChange={(e) => update(field, e.target.value)}
-                />
+                <input className="field-input" value={form[field] ?? ""} onChange={(e) => update(field, e.target.value)} />
               </div>
             ))}
           </div>
           <p className="mt-2 text-xs text-ink-soft">
             Next numbers: {form.quotation_prefix}-{String(form.next_quotation_seq).padStart(4, "0")} · {form.invoice_prefix}-
             {String(form.next_invoice_seq).padStart(4, "0")} · {form.bill_prefix}-
-            {String(form.next_bill_seq).padStart(4, "0")}
+            {String(form.next_bill_seq).padStart(4, "0")} · {form.letterhead_prefix}-
+            {String(form.next_letterhead_seq).padStart(4, "0")} · {form.psr_prefix}-
+            {String(form.next_psr_seq).padStart(4, "0")}
           </p>
         </div>
 

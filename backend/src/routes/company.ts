@@ -20,6 +20,8 @@ const EDITABLE_FIELDS = [
   "pincode",
   "country",
   "logo_url",
+  "seal_url",
+  "signature_url",
   "bank_name",
   "bank_account_no",
   "bank_ifsc",
@@ -29,6 +31,8 @@ const EDITABLE_FIELDS = [
   "quotation_prefix",
   "invoice_prefix",
   "bill_prefix",
+  "letterhead_prefix",
+  "psr_prefix",
   "default_tax_rate",
   "currency",
 ] as const;

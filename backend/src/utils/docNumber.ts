@@ -1,23 +1,29 @@
 import type { D1Database } from "@cloudflare/workers-types";
 
-type DocKind = "quotation" | "invoice" | "bill";
+type DocKind = "quotation" | "invoice" | "bill" | "letterhead" | "status_report";
 
 const SEQ_COLUMN: Record<DocKind, string> = {
   quotation: "next_quotation_seq",
   invoice: "next_invoice_seq",
   bill: "next_bill_seq",
+  letterhead: "next_letterhead_seq",
+  status_report: "next_psr_seq",
 };
 
 const PREFIX_COLUMN: Record<DocKind, string> = {
   quotation: "quotation_prefix",
   invoice: "invoice_prefix",
   bill: "bill_prefix",
+  letterhead: "letterhead_prefix",
+  status_report: "psr_prefix",
 };
 
 const TABLE: Record<DocKind, string> = {
   quotation: "quotations",
   invoice: "invoices",
   bill: "bills",
+  letterhead: "letterheads",
+  status_report: "project_status_reports",
 };
 
 /**

@@ -85,7 +85,7 @@ export const api = {
   listHistory: (customerId) => get(`/api/billing-history${customerId ? `?customer_id=${customerId}` : ""}`),
   getChain: (type, id) => get(`/api/billing-history/chain/${type}/${id}`),
 
-    // Letterheads
+  // Letterheads
   listLetterheads: () => get("/api/letterheads"),
   getLetterhead: (id) => get(`/api/letterheads/${id}`),
   createLetterhead: (body) => post("/api/letterheads", body),
@@ -96,12 +96,10 @@ export const api = {
   listProjectStatusReports: () => get("/api/project-status-reports"),
   getProjectStatusReport: (id) => get(`/api/project-status-reports/${id}`),
   createProjectStatusReport: (body) => post("/api/project-status-reports", body),
-  updateProjectStatusReport: (id, body) =>
-    put(`/api/project-status-reports/${id}`, body),
-  deleteProjectStatusReport: (id) =>
-    del(`/api/project-status-reports/${id}`),
+  updateProjectStatusReport: (id, body) => put(`/api/project-status-reports/${id}`, body),
+  deleteProjectStatusReport: (id) => del(`/api/project-status-reports/${id}`),
 
-  // Auth  
+  // Auth
   me: () => get("/api/auth/me"),
   logout: () => post("/api/auth/logout"),
   googleLoginUrl: () => `${BASE_URL}/api/auth/google/start`,
@@ -113,4 +111,3 @@ export const api = {
   adminApproveClaim: (id) => patch(`/api/billing/admin/claims/${id}/approve`),
   adminRejectClaim: (id) => patch(`/api/billing/admin/claims/${id}/reject`),
 };
-

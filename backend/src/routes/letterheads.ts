@@ -1,166 +1,111 @@
 import { Hono } from "hono";
-import type { D1Database } from "@cloudflare/workers-types";
 import type { Env, AuthContext } from "../types";
+import { parseBody } from "../utils/http";
+import { nextDocNumber } from "../utils/docNumber";
 import { requireAuth, requireActiveSubscription } from "../middleware/auth";
 
-const app = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
-app.use("*", requireAuth, requireActiveSubscription);
+export const letterheads = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
+letterheads.use("*", requireAuth, requireActiveSubscription);
 
-function uuid() {
-  return crypto.randomUUID();
-}
-
-async function nextDocNumber(db: D1Database, accountId: number): Promise<string> {
-  const year = new Date().getFullYear();
-
-  await db
-    .prepare(
-      `INSERT INTO letterhead_counters (account_id, last_number)
-       VALUES (?, 0)
-       ON CONFLICT(account_id) DO NOTHING`
-    )
-    .bind(accountId)
-    .run();
-
-  const row = await db
-    .prepare(
-      `UPDATE letterhead_counters
-       SET last_number = last_number + 1
-       WHERE account_id = ?
-       RETURNING last_number`
-    )
-    .bind(accountId)
-    .first<{ last_number: number }>();
-
-  if (!row) {
-    throw new Error("Failed to generate letterhead document number");
-  }
-
-  const seq = String(row.last_number).padStart(4, "0");
-  return `LH-${year}-${seq}`;
-}
-
-app.get("/", async (c) => {
+letterheads.get("/", async (c) => {
   const { accountId } = c.get("auth");
-
-  const { results } = await c.env.DB
-    .prepare(
-      `SELECT id, doc_number, doc_type, title, subject, doc_date,
-              recipient_name, status, created_at, updated_at
-       FROM letterheads
-       WHERE account_id = ?
-       ORDER BY created_at DESC`
-    )
+  const { results } = await c.env.DB.prepare(
+    "SELECT * FROM letterheads WHERE account_id = ? ORDER BY created_at DESC"
+  )
     .bind(accountId)
     .all();
-
-  return c.json({ items: results ?? [] });
+  return c.json(results ?? []);
 });
 
-app.get("/:id", async (c) => {
+letterheads.get("/:id", async (c) => {
   const { accountId } = c.get("auth");
   const id = c.req.param("id");
-
-  const item = await c.env.DB
-    .prepare(`SELECT * FROM letterheads WHERE id = ? AND account_id = ?`)
+  const row = await c.env.DB.prepare("SELECT * FROM letterheads WHERE id = ? AND account_id = ?")
     .bind(id, accountId)
     .first();
-
-  if (!item) return c.json({ error: "Not found" }, 404);
-
-  return c.json(item);
+  if (!row) return c.json({ error: "Document not found" }, 404);
+  return c.json(row);
 });
 
-app.post("/", async (c) => {
-  const { accountId, userId } = c.get("auth");
-  const body = await c.req.json();
-
-  if (!body.title || !body.doc_date || !body.body_content) {
-    return c.json(
-      { error: "title, doc_date and body_content are required" },
-      400
-    );
+letterheads.post("/", async (c) => {
+  const { accountId } = c.get("auth");
+  const body = await parseBody<Record<string, unknown>>(c.req.raw);
+  if (!body.title || !body.issue_date || !body.body_content) {
+    return c.json({ error: "title, issue_date and body_content are required" }, 400);
   }
 
-  const id = uuid();
-  const docNumber = await nextDocNumber(c.env.DB, accountId);
+  const docNumber = await nextDocNumber(c.env.DB, accountId, "letterhead");
 
-  await c.env.DB
-    .prepare(
-      `INSERT INTO letterheads
-        (id, account_id, doc_number, doc_type, title, subject, doc_date,
-         recipient_name, recipient_address, body_content, prepared_by,
-         status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
+  const result = await c.env.DB.prepare(
+    `INSERT INTO letterheads
+      (account_id, doc_number, doc_type, title, subject, issue_date,
+       recipient_name, recipient_address, body_content, prepared_by, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
     .bind(
-      id,
       accountId,
       docNumber,
       body.doc_type || "general",
       body.title,
-      body.subject || null,
-      body.doc_date,
-      body.recipient_name || null,
-      body.recipient_address || null,
+      body.subject ?? null,
+      body.issue_date,
+      body.recipient_name ?? null,
+      body.recipient_address ?? null,
       body.body_content,
-      body.prepared_by || null,
-      body.status || "draft",
-      userId
+      body.prepared_by ?? null,
+      body.status || "draft"
     )
     .run();
 
-  return c.json({ id, doc_number: docNumber }, 201);
+  const row = await c.env.DB.prepare("SELECT * FROM letterheads WHERE id = ?")
+    .bind(result.meta.last_row_id)
+    .first();
+  return c.json(row, 201);
 });
 
-app.put("/:id", async (c) => {
+letterheads.put("/:id", async (c) => {
   const { accountId } = c.get("auth");
   const id = c.req.param("id");
-  const body = await c.req.json();
+  const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
-  const existing = await c.env.DB
-    .prepare(`SELECT id FROM letterheads WHERE id = ? AND account_id = ?`)
+  const existing = await c.env.DB.prepare("SELECT * FROM letterheads WHERE id = ? AND account_id = ?")
     .bind(id, accountId)
-    .first();
+    .first<any>();
+  if (!existing) return c.json({ error: "Document not found" }, 404);
 
-  if (!existing) return c.json({ error: "Not found" }, 404);
-
-  await c.env.DB
-    .prepare(
-      `UPDATE letterheads SET
-        doc_type = ?, title = ?, subject = ?, doc_date = ?,
-        recipient_name = ?, recipient_address = ?, body_content = ?,
-        prepared_by = ?, status = ?, updated_at = datetime('now')
-       WHERE id = ? AND account_id = ?`
-    )
+  await c.env.DB.prepare(
+    `UPDATE letterheads SET
+      doc_type = ?, title = ?, subject = ?, issue_date = ?,
+      recipient_name = ?, recipient_address = ?, body_content = ?,
+      prepared_by = ?, status = ?, updated_at = datetime('now')
+     WHERE id = ? AND account_id = ?`
+  )
     .bind(
-      body.doc_type || "general",
-      body.title,
-      body.subject || null,
-      body.doc_date,
-      body.recipient_name || null,
-      body.recipient_address || null,
-      body.body_content,
-      body.prepared_by || null,
-      body.status || "draft",
+      body.doc_type ?? existing.doc_type,
+      body.title ?? existing.title,
+      body.subject ?? existing.subject,
+      body.issue_date ?? existing.issue_date,
+      body.recipient_name ?? existing.recipient_name,
+      body.recipient_address ?? existing.recipient_address,
+      body.body_content ?? existing.body_content,
+      body.prepared_by ?? existing.prepared_by,
+      body.status ?? existing.status,
       id,
       accountId
     )
     .run();
 
-  return c.json({ success: true });
+  const row = await c.env.DB.prepare("SELECT * FROM letterheads WHERE id = ?").bind(id).first();
+  return c.json(row);
 });
 
-app.delete("/:id", async (c) => {
+letterheads.delete("/:id", async (c) => {
   const { accountId } = c.get("auth");
   const id = c.req.param("id");
-
-  await c.env.DB
-    .prepare(`DELETE FROM letterheads WHERE id = ? AND account_id = ?`)
+  const existing = await c.env.DB.prepare("SELECT id FROM letterheads WHERE id = ? AND account_id = ?")
     .bind(id, accountId)
-    .run();
-
-  return c.json({ success: true });
+    .first();
+  if (!existing) return c.json({ error: "Document not found" }, 404);
+  await c.env.DB.prepare("DELETE FROM letterheads WHERE id = ? AND account_id = ?").bind(id, accountId).run();
+  return c.json({ ok: true });
 });
-
-export default app;
