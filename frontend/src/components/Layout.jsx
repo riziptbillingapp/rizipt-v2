@@ -3,7 +3,6 @@ import { NavLink, Outlet } from "react-router-dom";
 import InstallAppButton from "./InstallAppButton.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../api/client.js";
-
 const NAV = [
   { to: "/dashboard", label: "Dashboard", end: true },
   { to: "/billing-history", label: "Billing History" },
@@ -13,13 +12,13 @@ const NAV = [
   { to: "/customers", label: "Customers" },
   { to: "/products", label: "Products / Services" },
   { to: "/company-profile", label: "Company Profile" },
+  { to: "/letterheads", label: "Letterheads" },
+  { to: "/project-status-reports", label: "Status Reports" },
   { to: "/subscription", label: "Subscription" },
 ];
-
 export default function Layout() {
   const { user, signOut } = useAuth();
   const [trialDaysLeft, setTrialDaysLeft] = useState(null);
-
   useEffect(() => {
     api
       .getBillingStatus()
@@ -28,9 +27,7 @@ export default function Layout() {
       })
       .catch(() => {});
   }, []);
-
   const nav = user?.isAdmin ? [...NAV, { to: "/admin", label: "Admin" }] : NAV;
-
   return (
     <div className="flex min-h-screen">
       <aside className="flex w-60 shrink-0 flex-col border-r border-paper-line bg-white">
@@ -95,4 +92,3 @@ export default function Layout() {
     </div>
   );
 }
-
