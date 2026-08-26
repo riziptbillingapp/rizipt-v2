@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
-import { fileToCompressedDataUrl } from "../utils/image.js";
+import { fileToCompressedDataUrl, fileToCroppedStampDataUrl } from "../utils/image.js";
 import { buildUpiUri, generateQrDataUrl } from "../utils/upiQr.js";
 import { DEFAULT_BRAND_COLOR } from "../utils/color.js";
 
@@ -120,11 +120,35 @@ export default function CompanyProfile() {
     };
   }
 
+  // Seal/signature scans usually come with a lot of blank margin around the
+  // actual ink (a photographed stamp on a full sheet of paper, for example).
+  // fileToCroppedStampDataUrl trims that margin first, so the stamp/signature
+  // itself — not the surrounding whitespace — fills the space it's given on
+  // documents, instead of rendering tiny.
+  function makeStampHandler(field, setUploading) {
+    return async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setError(`Please choose an image file for ${field.replace("_url", "")}.`);
+        return;
+      }
+      setUploading(true);
+      setError("");
+      try {
+        const dataUrl = await fileToCroppedStampDataUrl(file, { maxDim: 480, quality: 0.92, paddingRatio: 0.05 });
+        update(field, dataUrl);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setUploading(false);
+      }
+    };
+  }
+
   const onLogoSelected = makeImageHandler("logo_url", setLogoUploading, { maxDim: 320 });
-  // Seals/signatures are usually small stamps/scrawls — a smaller maxDim keeps
-  // the stored data URI compact while still looking crisp at document size.
-  const onSealSelected = makeImageHandler("seal_url", setSealUploading, { maxDim: 240 });
-  const onSignatureSelected = makeImageHandler("signature_url", setSignatureUploading, { maxDim: 240 });
+  const onSealSelected = makeStampHandler("seal_url", setSealUploading);
+  const onSignatureSelected = makeStampHandler("signature_url", setSignatureUploading);
 
   const save = async (e) => {
     e.preventDefault();
@@ -172,7 +196,7 @@ export default function CompanyProfile() {
           />
           <ImageUploadCard
             title="Seal"
-            hint="Company stamp/seal, shown next to the signature on documents."
+            hint="Company stamp/seal. Blank space around it is trimmed automatically so it prints true to size."
             value={form.seal_url}
             uploading={sealUploading}
             onSelect={onSealSelected}
@@ -180,7 +204,7 @@ export default function CompanyProfile() {
           />
           <ImageUploadCard
             title="Signature"
-            hint="Scanned or photographed signature, shown above the signature line."
+            hint="Scanned or photographed signature. Blank space around it is trimmed automatically."
             value={form.signature_url}
             uploading={signatureUploading}
             onSelect={onSignatureSelected}

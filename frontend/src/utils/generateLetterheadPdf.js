@@ -178,7 +178,7 @@ export async function generateLetterheadPdf({ doc, company }) {
   });
 
   y += 30;
-  if (y > pageHeight - 110) {
+  if (y > pageHeight - 160) {
     pdf.addPage();
     y = margin;
   }
@@ -191,34 +191,47 @@ export async function generateLetterheadPdf({ doc, company }) {
   pdf.setTextColor(...INK);
   pdf.text(`For ${company?.name || ""}`, pageWidth - margin, y, { align: "right" });
 
-  const sigBlockTop = y + 8;
-  const sigW = 90;
-  const sigH = 36;
+  const sigBlockTop = y + 10;
+  // Real stamps/signatures read as roughly 1"-1.5" across on a printed page —
+  // these sizes (in points, 72pt = 1") aim for that, now that the uploaded
+  // images are pre-cropped to their actual ink content rather than including
+  // a lot of blank scan margin. Seal sized a bit larger than the signature,
+  // matching how a physical stamp usually reads bolder than a signature.
+  const sealMaxSize = 104; // ~1.44"
+  const sigMaxW = 130; // ~1.8"
+  const sigMaxH = 56; // ~0.78"
+  let sealW = 0;
 
   if (company?.seal_url) {
     try {
       const dims = await getImageDimensions(company.seal_url);
-      const size = 56;
-      const w = dims.width >= dims.height ? size : (size * dims.width) / dims.height;
-      const h = dims.height >= dims.width ? size : (size * dims.height) / dims.width;
-      pdf.addImage(company.seal_url, imageFormat(company.seal_url), pageWidth - margin - 150 - w, sigBlockTop, w, h);
+      const w = dims.width >= dims.height ? sealMaxSize : (sealMaxSize * dims.width) / dims.height;
+      const h = dims.height >= dims.width ? sealMaxSize : (sealMaxSize * dims.height) / dims.width;
+      sealW = w;
+      pdf.addImage(company.seal_url, imageFormat(company.seal_url), pageWidth - margin - sigMaxW - 16 - w, sigBlockTop, w, h);
     } catch {
       // skip if undecodable
     }
   }
 
+  let sigH = sigMaxH;
   if (company?.signature_url) {
     try {
       const dims = await getImageDimensions(company.signature_url);
-      const w = sigW;
-      const h = Math.min(sigH, (sigW * dims.height) / dims.width);
-      pdf.addImage(company.signature_url, imageFormat(company.signature_url), pageWidth - margin - sigW, sigBlockTop, w, h);
+      let w = sigMaxW;
+      let h = (sigMaxW * dims.height) / dims.width;
+      if (h > sigMaxH) {
+        h = sigMaxH;
+        w = (sigMaxH * dims.width) / dims.height;
+      }
+      sigH = h;
+      pdf.addImage(company.signature_url, imageFormat(company.signature_url), pageWidth - margin - w, sigBlockTop, w, h);
     } catch {
       // skip if undecodable
     }
   }
 
-  const lineY = sigBlockTop + sigH + 6;
+  const lineY = sigBlockTop + Math.max(sealW ? sealMaxSize : 0, sigH) + 8;
   pdf.setDrawColor(...INK);
   pdf.setLineWidth(0.5);
   pdf.line(pageWidth - margin - 120, lineY, pageWidth - margin, lineY);

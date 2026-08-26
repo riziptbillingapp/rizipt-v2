@@ -184,7 +184,7 @@ export async function generateProjectStatusReportPdf({ doc, company }) {
     y = pdf.lastAutoTable.finalY + 26;
   }
 
-  if (y > pageHeight - 110) {
+  if (y > pageHeight - 160) {
     pdf.addPage();
     y = margin;
   }
@@ -195,34 +195,45 @@ export async function generateProjectStatusReportPdf({ doc, company }) {
   pdf.setTextColor(...INK);
   pdf.text(`For ${company?.name || ""}`, pageWidth - margin, y, { align: "right" });
 
-  const sigBlockTop = y + 8;
-  const sigW = 90;
-  const sigH = 36;
+  const sigBlockTop = y + 10;
+  // Same realistic-size logic as generateLetterheadPdf.js — see comment
+  // there. Kept in sync so a seal/signature looks the same size across
+  // every document type it appears on.
+  const sealMaxSize = 104;
+  const sigMaxW = 130;
+  const sigMaxH = 56;
+  let sealW = 0;
 
   if (company?.seal_url) {
     try {
       const dims = await getImageDimensions(company.seal_url);
-      const size = 56;
-      const w = dims.width >= dims.height ? size : (size * dims.width) / dims.height;
-      const h = dims.height >= dims.width ? size : (size * dims.height) / dims.width;
-      pdf.addImage(company.seal_url, imageFormat(company.seal_url), pageWidth - margin - 150 - w, sigBlockTop, w, h);
+      const w = dims.width >= dims.height ? sealMaxSize : (sealMaxSize * dims.width) / dims.height;
+      const h = dims.height >= dims.width ? sealMaxSize : (sealMaxSize * dims.height) / dims.width;
+      sealW = w;
+      pdf.addImage(company.seal_url, imageFormat(company.seal_url), pageWidth - margin - sigMaxW - 16 - w, sigBlockTop, w, h);
     } catch {
       // skip
     }
   }
 
+  let sigH = sigMaxH;
   if (company?.signature_url) {
     try {
       const dims = await getImageDimensions(company.signature_url);
-      const w = sigW;
-      const h = Math.min(sigH, (sigW * dims.height) / dims.width);
-      pdf.addImage(company.signature_url, imageFormat(company.signature_url), pageWidth - margin - sigW, sigBlockTop, w, h);
+      let w = sigMaxW;
+      let h = (sigMaxW * dims.height) / dims.width;
+      if (h > sigMaxH) {
+        h = sigMaxH;
+        w = (sigMaxH * dims.width) / dims.height;
+      }
+      sigH = h;
+      pdf.addImage(company.signature_url, imageFormat(company.signature_url), pageWidth - margin - w, sigBlockTop, w, h);
     } catch {
       // skip
     }
   }
 
-  const lineY = sigBlockTop + sigH + 6;
+  const lineY = sigBlockTop + Math.max(sealW ? sealMaxSize : 0, sigH) + 8;
   pdf.setDrawColor(...INK);
   pdf.setLineWidth(0.5);
   pdf.line(pageWidth - margin - 120, lineY, pageWidth - margin, lineY);
