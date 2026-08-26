@@ -195,19 +195,32 @@ export async function generateLetterheadPdf({ doc, company }) {
   // Real stamps/signatures read as roughly 1"-1.5" across on a printed page —
   // these sizes (in points, 72pt = 1") aim for that, now that the uploaded
   // images are pre-cropped to their actual ink content rather than including
-  // a lot of blank scan margin. Seal sized a bit larger than the signature,
-  // matching how a physical stamp usually reads bolder than a signature.
-  const sealMaxSize = 104; // ~1.44"
+  // a lot of blank scan margin.
+  //
+  // Seals are usually WIDE and SHORT (a rectangular or oval stamp with text
+  // running across it), not square — so sizing them like the signature (fit
+  // into an equal w/h box) constrains them by their long dimension and makes
+  // them look small. Instead, size the seal by TARGET HEIGHT so it reads at
+  // the same visual weight as the signature, and only cap width if that
+  // would make it wide enough to collide with the text above.
+  const sealTargetHeight = 68;
+  const sealMaxWidth = 160;
   const sigMaxW = 130; // ~1.8"
   const sigMaxH = 56; // ~0.78"
   let sealW = 0;
+  let sealH = 0;
 
   if (company?.seal_url) {
     try {
       const dims = await getImageDimensions(company.seal_url);
-      const w = dims.width >= dims.height ? sealMaxSize : (sealMaxSize * dims.width) / dims.height;
-      const h = dims.height >= dims.width ? sealMaxSize : (sealMaxSize * dims.height) / dims.width;
+      let h = sealTargetHeight;
+      let w = h * (dims.width / dims.height);
+      if (w > sealMaxWidth) {
+        w = sealMaxWidth;
+        h = w * (dims.height / dims.width);
+      }
       sealW = w;
+      sealH = h;
       pdf.addImage(company.seal_url, imageFormat(company.seal_url), pageWidth - margin - sigMaxW - 16 - w, sigBlockTop, w, h);
     } catch {
       // skip if undecodable
@@ -231,7 +244,7 @@ export async function generateLetterheadPdf({ doc, company }) {
     }
   }
 
-  const lineY = sigBlockTop + Math.max(sealW ? sealMaxSize : 0, sigH) + 8;
+  const lineY = sigBlockTop + Math.max(sealH, sigH) + 8;
   pdf.setDrawColor(...INK);
   pdf.setLineWidth(0.5);
   pdf.line(pageWidth - margin - 120, lineY, pageWidth - margin, lineY);

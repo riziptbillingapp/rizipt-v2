@@ -196,20 +196,27 @@ export async function generateProjectStatusReportPdf({ doc, company }) {
   pdf.text(`For ${company?.name || ""}`, pageWidth - margin, y, { align: "right" });
 
   const sigBlockTop = y + 10;
-  // Same realistic-size logic as generateLetterheadPdf.js — see comment
-  // there. Kept in sync so a seal/signature looks the same size across
-  // every document type it appears on.
-  const sealMaxSize = 104;
+  // Same realistic-size, height-driven seal sizing as generateLetterheadPdf.js
+  // — see the comment there. Kept in sync so a seal/signature looks the same
+  // size across every document type it appears on.
+  const sealTargetHeight = 68;
+  const sealMaxWidth = 160;
   const sigMaxW = 130;
   const sigMaxH = 56;
   let sealW = 0;
+  let sealH = 0;
 
   if (company?.seal_url) {
     try {
       const dims = await getImageDimensions(company.seal_url);
-      const w = dims.width >= dims.height ? sealMaxSize : (sealMaxSize * dims.width) / dims.height;
-      const h = dims.height >= dims.width ? sealMaxSize : (sealMaxSize * dims.height) / dims.width;
+      let h = sealTargetHeight;
+      let w = h * (dims.width / dims.height);
+      if (w > sealMaxWidth) {
+        w = sealMaxWidth;
+        h = w * (dims.height / dims.width);
+      }
       sealW = w;
+      sealH = h;
       pdf.addImage(company.seal_url, imageFormat(company.seal_url), pageWidth - margin - sigMaxW - 16 - w, sigBlockTop, w, h);
     } catch {
       // skip
@@ -233,7 +240,7 @@ export async function generateProjectStatusReportPdf({ doc, company }) {
     }
   }
 
-  const lineY = sigBlockTop + Math.max(sealW ? sealMaxSize : 0, sigH) + 8;
+  const lineY = sigBlockTop + Math.max(sealH, sigH) + 8;
   pdf.setDrawColor(...INK);
   pdf.setLineWidth(0.5);
   pdf.line(pageWidth - margin - 120, lineY, pageWidth - margin, lineY);
