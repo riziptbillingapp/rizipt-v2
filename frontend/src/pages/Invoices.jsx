@@ -11,6 +11,7 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
   const [customerId, setCustomerId] = useState("");
   const [issueDate, setIssueDate] = useState(today());
   const [dueDate, setDueDate] = useState("");
+  const [advanceReceived, setAdvanceReceived] = useState("");
   const [notes, setNotes] = useState("");
   const [defaultTaxRate, setDefaultTaxRate] = useState(0);
   const [items, setItems] = useState([emptyLine()]);
@@ -30,6 +31,7 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
       setCustomerId("");
       setIssueDate(today());
       setDueDate("");
+      setAdvanceReceived("");
       setNotes("");
       setError("");
     }
@@ -45,6 +47,7 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
         customer_id: Number(customerId),
         issue_date: issueDate,
         due_date: dueDate || null,
+        amount_paid: Number(advanceReceived) || 0,
         notes,
         items,
         status: "sent",
@@ -88,6 +91,24 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
           </div>
         </div>
 
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="field-label">Advance received (optional)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="field-input"
+              placeholder="0.00"
+              value={advanceReceived}
+              onChange={(e) => setAdvanceReceived(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-ink-soft">
+              Shown as a deduction on the PDF, with the balance printed as "Balance Due".
+            </p>
+          </div>
+        </div>
+
         <ItemsEditor items={items} onChange={setItems} products={products} defaultTaxRate={defaultTaxRate} />
 
         <div>
@@ -113,10 +134,15 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [advanceInput, setAdvanceInput] = useState("");
+  const [savingAdvance, setSavingAdvance] = useState(false);
 
   useEffect(() => {
     if (open && id) {
-      api.getInvoice(id).then(setDoc).catch((e) => setError(e.message));
+      api.getInvoice(id).then((d) => {
+        setDoc(d);
+        setAdvanceInput(String(d.amount_paid || ""));
+      }).catch((e) => setError(e.message));
     }
   }, [open, id]);
 
@@ -138,6 +164,22 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
   };
 
   if (!doc) return open ? <Modal open={open} onClose={onClose} title="Invoice">Loading…</Modal> : null;
+
+  const canEditAdvance = doc.status !== "converted";
+
+  const saveAdvance = async () => {
+    setSavingAdvance(true);
+    setError("");
+    try {
+      const updated = await api.updateInvoice(doc.id, { amount_paid: Number(advanceInput) || 0 });
+      setDoc(updated);
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSavingAdvance(false);
+    }
+  };
 
   return (
     <Modal open={open} onClose={onClose} title={`Invoice ${doc.doc_number}`} wide>
@@ -200,14 +242,39 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
       </div>
 
       <div className="mt-3 flex justify-end">
-        <div className="w-56 space-y-1 font-mono text-sm">
-          <div className="flex justify-between text-ink-soft">
-            <span>Amount paid</span>
-            <span>{money(doc.amount_paid)}</span>
+        <div className="w-64 space-y-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-ink-soft">Advance received</span>
+            {canEditAdvance ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="field-input w-24 py-1 text-right font-mono"
+                  value={advanceInput}
+                  onChange={(e) => setAdvanceInput(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary px-2 py-1 text-xs"
+                  disabled={savingAdvance || Number(advanceInput) === Number(doc.amount_paid || 0)}
+                  onClick={saveAdvance}
+                >
+                  {savingAdvance ? "…" : "Save"}
+                </button>
+              </div>
+            ) : (
+              <span className="font-mono">{money(doc.amount_paid)}</span>
+            )}
           </div>
-          <div className="flex justify-between border-t border-paper-line pt-1 text-base font-semibold text-ink">
-            <span>Total</span>
+          <div className="flex justify-between border-t border-paper-line pt-2 font-mono">
+            <span className="text-ink-soft">Total</span>
             <span>{money(doc.grand_total)}</span>
+          </div>
+          <div className="flex justify-between border-t border-paper-line pt-2 text-base font-semibold text-ink">
+            <span>Balance due</span>
+            <span className="font-mono">{money(doc.grand_total - (Number(doc.amount_paid) || 0))}</span>
           </div>
         </div>
       </div>
