@@ -134,7 +134,30 @@ export async function generateDocumentPdf({ docType, doc, company, customer }) {
   y += 16;
 
   // --- Bill To ---
-  const billToHeight = 48;
+  // Compute the full wrapped address BEFORE drawing the box, so the box can
+  // be sized to fit it — this is what was truncating long addresses before:
+  // the box height was a fixed 48pt and only the first wrapped line was ever
+  // drawn (custWrapped.slice(0, 1)), silently dropping the rest.
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(8);
+  const custLine = [
+    customer?.billing_address,
+    customer?.phone && `Ph: ${customer.phone}`,
+    customer?.email && `Email: ${customer.email}`,
+  ]
+    .filter(Boolean)
+    .join("  |  ");
+  // Cap at 6 wrapped lines as a safety net against a pathologically long
+  // address blowing out the page layout — generous for any real address.
+  const addressLines = custLine ? pdf.splitTextToSize(custLine, contentWidth - 24).slice(0, 6) : [];
+
+  const nameLineY = 25;
+  const addressStartY = 38;
+  const addrLineHeight = 10;
+  const addressBlockHeight = addressLines.length * addrLineHeight;
+  const gstinGap = customer?.gstin ? 12 : 0;
+  const billToHeight = Math.max(48, addressStartY + addressBlockHeight + gstinGap - 2);
+
   pdf.setFillColor(250, 247, 239);
   pdf.rect(margin, y, contentWidth, billToHeight, "F");
   pdf.setDrawColor(...NAVY);
@@ -149,25 +172,19 @@ export async function generateDocumentPdf({ docType, doc, company, customer }) {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(10);
   pdf.setTextColor(...INK);
-  pdf.text(customer?.name || "", margin + 12, y + 25);
+  pdf.text(customer?.name || "", margin + 12, y + nameLineY);
 
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8);
   pdf.setTextColor(...INK_SOFT);
-  const custLine = [
-    customer?.billing_address,
-    customer?.phone && `Ph: ${customer.phone}`,
-    customer?.email && `Email: ${customer.email}`,
-  ]
-    .filter(Boolean)
-    .join("  |  ");
-  const custWrapped = pdf.splitTextToSize(custLine, contentWidth - 24);
-  pdf.text(custWrapped.slice(0, 1), margin + 12, y + 36);
+  addressLines.forEach((line, i) => {
+    pdf.text(line, margin + 12, y + addressStartY + i * addrLineHeight);
+  });
 
   if (customer?.gstin) {
     pdf.setFont("helvetica", "bold");
     pdf.setTextColor(...INK);
-    pdf.text(`GSTIN: ${customer.gstin}`, margin + 12, y + 46);
+    pdf.text(`GSTIN: ${customer.gstin}`, margin + 12, y + addressStartY + addressBlockHeight + 8);
   }
 
   y += billToHeight + 16;
@@ -255,11 +272,22 @@ export async function generateDocumentPdf({ docType, doc, company, customer }) {
     totalRow("Round Off", `${roundOff >= 0 ? "+" : ""}${money(roundOff)}`, { color: RED });
   }
 
+  // Advance received against an invoice (amount_paid) reduces what's still
+  // owed. Shown as its own line, with the final total switching from
+  // "Net Payable" to "Balance Due" so it's clear the figure below is what's
+  // left to collect, not the full quoted amount.
+  const advanceReceived = docType === "invoice" ? Number(doc.amount_paid) || 0 : 0;
+  if (advanceReceived > 0) {
+    totalRow("Advance Received", `-${money(advanceReceived)}`, { color: GREEN });
+  }
+
   pdf.setDrawColor(...NAVY);
   pdf.setLineWidth(1.2);
   pdf.line(totalsX, totalsY - 4, pageWidth - margin, totalsY - 4);
   totalsY += 6;
-  totalRow(TOTAL_LABEL[docType], `Rs. ${money(doc.grand_total)}`, { bold: true, size: 12, color: NAVY });
+  const balanceDue = doc.grand_total - advanceReceived;
+  const finalLabel = advanceReceived > 0 ? "Balance Due" : TOTAL_LABEL[docType];
+  totalRow(finalLabel, `Rs. ${money(balanceDue)}`, { bold: true, size: 12, color: NAVY });
 
   y = totalsY + 14;
 
