@@ -55,8 +55,8 @@ invoices.post("/", async (c) => {
   const result = await c.env.DB.prepare(
     `INSERT INTO invoices
       (account_id, doc_number, customer_id, quotation_id, source_type, issue_date, due_date, items,
-       subtotal, discount_total, tax_total, grand_total, notes, terms, status, approval_status)
-     VALUES (?, ?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       subtotal, discount_total, tax_total, grand_total, amount_paid, notes, terms, status, approval_status)
+     VALUES (?, ?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       accountId,
@@ -69,6 +69,7 @@ invoices.post("/", async (c) => {
       totals.discount_total,
       totals.tax_total,
       totals.grand_total,
+      Number(body.amount_paid) || 0,
       body.notes ?? null,
       body.terms ?? null,
       body.status || "draft",
