@@ -104,7 +104,7 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
               onChange={(e) => setAdvanceReceived(e.target.value)}
             />
             <p className="mt-1 text-xs text-ink-soft">
-              Shown as a deduction on the PDF, with the balance printed as "Balance Due".
+              Shown as a deduction on the preview/PDF, with the balance printed as "Balance Due".
             </p>
           </div>
         </div>
@@ -129,7 +129,7 @@ function CreateInvoiceModal({ open, onClose, onCreated, customers, products }) {
   );
 }
 
-function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
+function InvoiceDetailModal({ id, open, onClose, onChanged, customers, products }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -137,12 +137,25 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
   const [advanceInput, setAdvanceInput] = useState("");
   const [savingAdvance, setSavingAdvance] = useState(false);
 
+  // --- Edit mode: customer/dates/items/notes. The backend already blocks
+  // edits once an invoice is converted to a bill and recomputes totals +
+  // resets approval to "pending" whenever items change — this UI just needs
+  // to collect the fields and call the existing PUT route.
+  const [editMode, setEditMode] = useState(false);
+  const [editCustomerId, setEditCustomerId] = useState("");
+  const [editIssueDate, setEditIssueDate] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editItems, setEditItems] = useState([]);
+  const [savingEdit, setSavingEdit] = useState(false);
+
   useEffect(() => {
     if (open && id) {
       api.getInvoice(id).then((d) => {
         setDoc(d);
         setAdvanceInput(String(d.amount_paid || ""));
       }).catch((e) => setError(e.message));
+      setEditMode(false);
     }
   }, [open, id]);
 
@@ -164,6 +177,40 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
   };
 
   if (!doc) return open ? <Modal open={open} onClose={onClose} title="Invoice">Loading…</Modal> : null;
+
+  const canEdit = doc.status !== "converted";
+
+  const startEdit = () => {
+    setEditCustomerId(String(doc.customer_id));
+    setEditIssueDate(doc.issue_date);
+    setEditDueDate(doc.due_date || "");
+    setEditNotes(doc.notes || "");
+    setEditItems(doc.items.length ? doc.items : [emptyLine()]);
+    setEditMode(true);
+  };
+
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    setSavingEdit(true);
+    setError("");
+    try {
+      const updated = await api.updateInvoice(doc.id, {
+        customer_id: Number(editCustomerId),
+        issue_date: editIssueDate,
+        due_date: editDueDate || null,
+        notes: editNotes,
+        items: editItems,
+      });
+      setDoc(updated);
+      setAdvanceInput(String(updated.amount_paid || ""));
+      setEditMode(false);
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const canEditAdvance = doc.status !== "converted";
 
@@ -196,127 +243,183 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers }) {
         )}
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-4 text-sm">
-        <div>
-          <div className="field-label">Customer</div>
-          <div className="text-ink">{customerName}</div>
-        </div>
-        <div>
-          <div className="field-label">Issue date</div>
-          <div className="text-ink">{doc.issue_date}</div>
-        </div>
-        <div>
-          <div className="field-label">Due date</div>
-          <div className="text-ink">{doc.due_date || "—"}</div>
-        </div>
-      </div>
+      {editMode ? (
+        <form onSubmit={saveEdit} className="space-y-4">
+          <p className="text-xs text-ink-soft">
+            Editing items resets approval status back to pending, since the totals will have changed.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="field-label">Customer *</label>
+              <select className="field-input" value={editCustomerId} onChange={(e) => setEditCustomerId(e.target.value)}>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="field-label">Issue date</label>
+              <input
+                type="date"
+                className="field-input"
+                value={editIssueDate}
+                onChange={(e) => setEditIssueDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="field-label">Due date</label>
+              <input type="date" className="field-input" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)} />
+            </div>
+          </div>
 
-      <div className="overflow-x-auto rounded-md border border-paper-line">
-        <table className="w-full text-sm">
-          <thead className="bg-paper text-left text-xs uppercase tracking-wide text-ink-soft">
-            <tr>
-              <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2 text-right">Qty</th>
-              <th className="px-3 py-2 text-right">Price</th>
-              <th className="px-3 py-2 text-right">Tax %</th>
-              <th className="px-3 py-2 text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {doc.items.map((it, idx) => {
-              const gross = it.quantity * it.unit_price;
-              const net = Math.max(gross - it.discount, 0);
-              const total = net + net * (it.tax_rate / 100);
-              return (
-                <tr key={idx} className="border-t border-paper-line">
-                  <td className="px-3 py-2">{it.name}</td>
-                  <td className="px-3 py-2 text-right font-mono">{it.quantity}</td>
-                  <td className="px-3 py-2 text-right font-mono">{money(it.unit_price)}</td>
-                  <td className="px-3 py-2 text-right font-mono">{it.tax_rate}%</td>
-                  <td className="px-3 py-2 text-right font-mono">{money(total)}</td>
+          <ItemsEditor items={editItems} onChange={setEditItems} products={products} />
+
+          <div>
+            <label className="field-label">Notes</label>
+            <textarea className="field-input" rows={2} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+          </div>
+
+          <div className="flex justify-end gap-2 border-t border-paper-line pt-4">
+            <button type="button" className="btn-secondary" onClick={() => setEditMode(false)} disabled={savingEdit}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary" disabled={savingEdit}>
+              {savingEdit ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <div className="field-label">Customer</div>
+              <div className="text-ink">{customerName}</div>
+            </div>
+            <div>
+              <div className="field-label">Issue date</div>
+              <div className="text-ink">{doc.issue_date}</div>
+            </div>
+            <div>
+              <div className="field-label">Due date</div>
+              <div className="text-ink">{doc.due_date || "—"}</div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-md border border-paper-line">
+            <table className="w-full text-sm">
+              <thead className="bg-paper text-left text-xs uppercase tracking-wide text-ink-soft">
+                <tr>
+                  <th className="px-3 py-2">Item</th>
+                  <th className="px-3 py-2 text-right">Qty</th>
+                  <th className="px-3 py-2 text-right">Price</th>
+                  <th className="px-3 py-2 text-right">Tax %</th>
+                  <th className="px-3 py-2 text-right">Total</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {doc.items.map((it, idx) => {
+                  const gross = it.quantity * it.unit_price;
+                  const net = Math.max(gross - it.discount, 0);
+                  const total = net + net * (it.tax_rate / 100);
+                  return (
+                    <tr key={idx} className="border-t border-paper-line">
+                      <td className="px-3 py-2">{it.name}</td>
+                      <td className="px-3 py-2 text-right font-mono">{it.quantity}</td>
+                      <td className="px-3 py-2 text-right font-mono">{money(it.unit_price)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{it.tax_rate}%</td>
+                      <td className="px-3 py-2 text-right font-mono">{money(total)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-      <div className="mt-3 flex justify-end">
-        <div className="w-64 space-y-2 text-sm">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-ink-soft">Advance received</span>
-            {canEditAdvance ? (
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="field-input w-24 py-1 text-right font-mono"
-                  value={advanceInput}
-                  onChange={(e) => setAdvanceInput(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="btn-secondary px-2 py-1 text-xs"
-                  disabled={savingAdvance || Number(advanceInput) === Number(doc.amount_paid || 0)}
-                  onClick={saveAdvance}
-                >
-                  {savingAdvance ? "…" : "Save"}
-                </button>
+          <div className="mt-3 flex justify-end">
+            <div className="w-64 space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink-soft">Advance received</span>
+                {canEditAdvance ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="field-input w-24 py-1 text-right font-mono"
+                      value={advanceInput}
+                      onChange={(e) => setAdvanceInput(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn-secondary px-2 py-1 text-xs"
+                      disabled={savingAdvance || Number(advanceInput) === Number(doc.amount_paid || 0)}
+                      onClick={saveAdvance}
+                    >
+                      {savingAdvance ? "…" : "Save"}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="font-mono">{money(doc.amount_paid)}</span>
+                )}
               </div>
-            ) : (
-              <span className="font-mono">{money(doc.amount_paid)}</span>
+              <div className="flex justify-between border-t border-paper-line pt-2 font-mono">
+                <span className="text-ink-soft">Total</span>
+                <span>{money(doc.grand_total)}</span>
+              </div>
+              <div className="flex justify-between border-t border-paper-line pt-2 text-base font-semibold text-ink">
+                <span>Balance due</span>
+                <span className="font-mono">{money(doc.grand_total - (Number(doc.amount_paid) || 0))}</span>
+              </div>
+            </div>
+          </div>
+
+          {doc.converted_to_bill_id && (
+            <p className="mt-3 text-sm text-ledger-navy">
+              Converted to bill #{doc.converted_to_bill_id}. This invoice is now read-only.
+            </p>
+          )}
+
+          <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
+            <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+              Preview / Download PDF
+            </button>
+            {canEdit && (
+              <button className="btn-secondary" onClick={startEdit}>
+                Edit
+              </button>
+            )}
+            {doc.approval_status === "pending" && (
+              <>
+                <button className="btn-primary" disabled={busy} onClick={() => act(() => api.approveInvoice(doc.id))}>
+                  Approve
+                </button>
+                <button className="btn-danger" disabled={busy} onClick={() => act(() => api.rejectInvoice(doc.id))}>
+                  Reject
+                </button>
+              </>
+            )}
+            {doc.approval_status === "approved" && doc.status !== "converted" && (
+              <button
+                className="btn-primary"
+                disabled={busy}
+                onClick={() => act(() => api.convertInvoiceToBill(doc.id, { payment_method: "cash" }))}
+              >
+                Convert to bill / receipt
+              </button>
             )}
           </div>
-          <div className="flex justify-between border-t border-paper-line pt-2 font-mono">
-            <span className="text-ink-soft">Total</span>
-            <span>{money(doc.grand_total)}</span>
-          </div>
-          <div className="flex justify-between border-t border-paper-line pt-2 text-base font-semibold text-ink">
-            <span>Balance due</span>
-            <span className="font-mono">{money(doc.grand_total - (Number(doc.amount_paid) || 0))}</span>
-          </div>
-        </div>
-      </div>
 
-      {doc.converted_to_bill_id && (
-        <p className="mt-3 text-sm text-ledger-navy">
-          Converted to bill #{doc.converted_to_bill_id}. This invoice is now read-only.
-        </p>
+          <PreviewModal
+            docType="invoice"
+            doc={doc}
+            customer={customer}
+            open={previewOpen}
+            onClose={() => setPreviewOpen(false)}
+          />
+        </>
       )}
-
-      <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
-        <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
-          Preview / Download PDF
-        </button>
-        {doc.approval_status === "pending" && (
-          <>
-            <button className="btn-primary" disabled={busy} onClick={() => act(() => api.approveInvoice(doc.id))}>
-              Approve
-            </button>
-            <button className="btn-danger" disabled={busy} onClick={() => act(() => api.rejectInvoice(doc.id))}>
-              Reject
-            </button>
-          </>
-        )}
-        {doc.approval_status === "approved" && doc.status !== "converted" && (
-          <button
-            className="btn-primary"
-            disabled={busy}
-            onClick={() => act(() => api.convertInvoiceToBill(doc.id, { payment_method: "cash" }))}
-          >
-            Convert to bill / receipt
-          </button>
-        )}
-      </div>
-
-      <PreviewModal
-        docType="invoice"
-        doc={doc}
-        customer={customer}
-        open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-      />
     </Modal>
   );
 }
@@ -412,6 +515,7 @@ export default function Invoices() {
         onClose={() => setDetailId(null)}
         onChanged={load}
         customers={customers}
+        products={products}
       />
     </div>
   );

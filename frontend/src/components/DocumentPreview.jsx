@@ -41,17 +41,6 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
   // QR on it would ask the customer to pay again for something they just paid.
   const isReceipt = docType === "bill";
 
-  useEffect(() => {
-    if (isReceipt || !company?.upi_id) return setQr(null);
-    const uri = buildUpiUri({
-      upiId: company.upi_id,
-      payeeName: company.name,
-      amount: doc.grand_total,
-      note: doc.doc_number,
-    });
-    generateQrDataUrl(uri).then(setQr);
-  }, [isReceipt, company?.upi_id, company?.name, doc.grand_total, doc.doc_number]);
-
   const items = doc.items || [];
   const secondaryDate = docType === "quotation" ? doc.valid_until : docType === "invoice" ? doc.due_date : doc.issue_date;
 
@@ -60,6 +49,25 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
   const taxTotal = items.reduce((s, it) => s + lineTotals(it).tax, 0);
   const actual = subtotal - discountTotal + taxTotal;
   const roundOff = doc.grand_total - actual;
+  // Mirrors generateDocumentPdf.js exactly: an invoice with an advance
+  // recorded shows the deduction and switches the final label to "Balance
+  // Due" instead of "Net Payable". Quotations/Bills are unaffected.
+  const advanceReceived = docType === "invoice" ? Number(doc.amount_paid) || 0 : 0;
+  const balanceDue = doc.grand_total - advanceReceived;
+
+  useEffect(() => {
+    if (isReceipt || !company?.upi_id) return setQr(null);
+    const uri = buildUpiUri({
+      upiId: company.upi_id,
+      payeeName: company.name,
+      // Use the balance still owed (after any advance), not the full
+      // original total — otherwise the QR asks the customer to pay the
+      // whole amount again even after part of it is already settled.
+      amount: balanceDue,
+      note: doc.doc_number,
+    });
+    generateQrDataUrl(uri).then(setQr);
+  }, [isReceipt, company?.upi_id, company?.name, balanceDue, doc.doc_number]);
 
   return (
     <div
@@ -189,12 +197,18 @@ export default function DocumentPreview({ docType, doc, company, customer, previ
               <span>{roundOff >= 0 ? "+" : ""}{money(roundOff)}</span>
             </div>
           )}
+          {advanceReceived > 0 && (
+            <div className="flex justify-between py-1 text-ledger-green">
+              <span>Advance Received</span>
+              <span>-{money(advanceReceived)}</span>
+            </div>
+          )}
           <div
             className="flex justify-between border-t-2 py-1.5 text-sm font-bold"
             style={{ borderColor: brand, color: brand }}
           >
-            <span>{TOTAL_LABEL[docType]}</span>
-            <span>₹ {money(doc.grand_total)}</span>
+            <span>{advanceReceived > 0 ? "Balance Due" : TOTAL_LABEL[docType]}</span>
+            <span>₹ {money(balanceDue)}</span>
           </div>
         </div>
       </div>
