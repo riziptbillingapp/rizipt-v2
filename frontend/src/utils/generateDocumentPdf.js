@@ -347,12 +347,16 @@ export async function generateDocumentPdf({ docType, doc, company, customer }) {
 
     let qrBottom = y;
     if (company?.upi_id) {
-      const uri = buildUpiUri({
+            const uri = buildUpiUri({
         upiId: company.upi_id,
         payeeName: company.name,
-        amount: doc.grand_total,
+        // Use the balance still owed (after any advance received), not the
+        // full original total — otherwise the QR asks the customer to pay
+        // the whole amount again even after part of it is already settled.
+        amount: balanceDue,
         note: doc.doc_number,
       });
+      
       const qrDataUrl = await generateQrDataUrl(uri);
       if (qrDataUrl) {
         const qrSize = 70;
