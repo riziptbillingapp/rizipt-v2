@@ -381,33 +381,70 @@ function InvoiceDetailModal({ id, open, onClose, onChanged, customers, products 
             </p>
           )}
 
+          {doc.discarded_at && (
+            <p className="mt-3 rounded-md bg-ledger-red/10 px-3 py-2 text-sm text-ledger-red">
+              This invoice is in the trash. Restore it to edit or convert it again, or delete it permanently.
+            </p>
+          )}
+
           <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
-            <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
-              Preview / Download PDF
-            </button>
-            {canEdit && (
-              <button className="btn-secondary" onClick={startEdit}>
-                Edit
-              </button>
-            )}
-            {doc.approval_status === "pending" && (
+            {doc.discarded_at ? (
               <>
-                <button className="btn-primary" disabled={busy} onClick={() => act(() => api.approveInvoice(doc.id))}>
-                  Approve
+                <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+                  Preview / Download PDF
                 </button>
-                <button className="btn-danger" disabled={busy} onClick={() => act(() => api.rejectInvoice(doc.id))}>
-                  Reject
+                <button className="btn-primary" disabled={busy} onClick={() => act(() => api.restoreInvoice(doc.id))}>
+                  Restore
+                </button>
+                <button
+                  className="btn-danger"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`Permanently delete invoice ${doc.doc_number}? This can't be undone.`)) {
+                      act(() => api.deleteInvoice(doc.id).then(() => { onClose(); return doc; }));
+                    }
+                  }}
+                >
+                  Delete permanently
                 </button>
               </>
-            )}
-            {doc.approval_status === "approved" && doc.status !== "converted" && (
-              <button
-                className="btn-primary"
-                disabled={busy}
-                onClick={() => act(() => api.convertInvoiceToBill(doc.id, { payment_method: "cash" }))}
-              >
-                Convert to bill / receipt
-              </button>
+            ) : (
+              <>
+                <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+                  Preview / Download PDF
+                </button>
+                {canEdit && (
+                  <button className="btn-secondary" onClick={startEdit}>
+                    Edit
+                  </button>
+                )}
+                {doc.approval_status === "pending" && (
+                  <>
+                    <button className="btn-primary" disabled={busy} onClick={() => act(() => api.approveInvoice(doc.id))}>
+                      Approve
+                    </button>
+                    <button className="btn-danger" disabled={busy} onClick={() => act(() => api.rejectInvoice(doc.id))}>
+                      Reject
+                    </button>
+                  </>
+                )}
+                {doc.approval_status === "approved" && doc.status !== "converted" && (
+                  <button
+                    className="btn-primary"
+                    disabled={busy}
+                    onClick={() => act(() => api.convertInvoiceToBill(doc.id, { payment_method: "cash" }))}
+                  >
+                    Convert to bill / receipt
+                  </button>
+                )}
+                <button
+                  className="btn-danger ml-auto"
+                  disabled={busy}
+                  onClick={() => act(() => api.discardInvoice(doc.id))}
+                >
+                  Move to trash
+                </button>
+              </>
             )}
           </div>
 
@@ -431,14 +468,15 @@ export default function Invoices() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailId, setDetailId] = useState(null);
   const [error, setError] = useState("");
+  const [showTrash, setShowTrash] = useState(false);
 
-  const load = () => api.listInvoices().then(setInvoices).catch((e) => setError(e.message));
+  const load = () => api.listInvoices(showTrash).then(setInvoices).catch((e) => setError(e.message));
 
   useEffect(() => {
     load();
     api.listCustomers().then(setCustomers).catch(() => {});
     api.listProducts().then(setProducts).catch(() => {});
-  }, []);
+  }, [showTrash]);
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || "—";
 
@@ -449,12 +487,24 @@ export default function Invoices() {
           <h1 className="font-display text-2xl font-semibold text-ink">Invoices</h1>
           <p className="text-sm text-ink-soft">Direct invoices, or ones converted from an approved quotation.</p>
         </div>
-        <button className="btn-primary" onClick={() => setCreateOpen(true)} disabled={customers.length === 0}>
-          + New invoice
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setShowTrash((v) => !v)}>
+            {showTrash ? "Back to invoices" : "Trash"}
+          </button>
+          {!showTrash && (
+            <button className="btn-primary" onClick={() => setCreateOpen(true)} disabled={customers.length === 0}>
+              + New invoice
+            </button>
+          )}
+        </div>
       </header>
 
       {error && <div className="mb-4 rounded-md bg-ledger-red/10 px-4 py-2 text-sm text-ledger-red">{error}</div>}
+      {showTrash && (
+        <p className="mb-4 text-sm text-ink-soft">
+          Discarded invoices. Open one to restore it or delete it permanently.
+        </p>
+      )}
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
@@ -494,7 +544,7 @@ export default function Invoices() {
             {invoices.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
-                  No invoices yet.
+                  {showTrash ? "Trash is empty." : "No invoices yet."}
                 </td>
               </tr>
             )}

@@ -17,8 +17,10 @@ invoices.get("/", async (c) => {
   const { accountId } = c.get("auth");
   const status = c.req.query("status");
   const customerId = c.req.query("customer_id");
+  const trash = c.req.query("trash") === "1";
   let query = "SELECT * FROM invoices WHERE account_id = ?";
   const values: unknown[] = [accountId];
+  query += trash ? " AND discarded_at IS NOT NULL" : " AND discarded_at IS NULL";
   if (status) {
     query += " AND status = ?";
     values.push(status);
@@ -224,15 +226,52 @@ invoices.post("/:id/convert-to-bill", async (c) => {
   return c.json(parseRow(bill), 201);
 });
 
+// --- Trash (soft delete) -----------------------------------------------
+// Discarding just hides the document from the default list — it does not
+// touch converted_to_bill_id or any other lineage, so it's always safe,
+// even for a converted, rejected, or unpaid invoice. Permanent deletion is
+// only allowed once a document is already in the trash, as a safety rail
+// against accidental data loss.
+
+invoices.patch("/:id/discard", async (c) => {
+  const { accountId } = c.get("auth");
+  const id = c.req.param("id");
+  await c.env.DB.prepare(
+    "UPDATE invoices SET discarded_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND account_id = ?"
+  )
+    .bind(id, accountId)
+    .run();
+  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
+  if (!row) return c.json({ error: "Invoice not found" }, 404);
+  return c.json(parseRow(row));
+});
+
+invoices.patch("/:id/restore", async (c) => {
+  const { accountId } = c.get("auth");
+  const id = c.req.param("id");
+  await c.env.DB.prepare(
+    "UPDATE invoices SET discarded_at = NULL, updated_at = datetime('now') WHERE id = ? AND account_id = ?"
+  )
+    .bind(id, accountId)
+    .run();
+  const row = await c.env.DB.prepare("SELECT * FROM invoices WHERE id = ? AND account_id = ?")
+    .bind(id, accountId)
+    .first();
+  if (!row) return c.json({ error: "Invoice not found" }, 404);
+  return c.json(parseRow(row));
+});
+
 invoices.delete("/:id", async (c) => {
   const { accountId } = c.get("auth");
   const id = c.req.param("id");
-  const existing = await c.env.DB.prepare("SELECT status FROM invoices WHERE id = ? AND account_id = ?")
+  const existing = await c.env.DB.prepare("SELECT status, discarded_at FROM invoices WHERE id = ? AND account_id = ?")
     .bind(id, accountId)
     .first<any>();
   if (!existing) return c.json({ error: "Invoice not found" }, 404);
-  if (existing.status === "converted") {
-    return c.json({ error: "Cannot delete an invoice that has been converted to a bill" }, 409);
+  if (!existing.discarded_at) {
+    return c.json({ error: "Move this invoice to trash first, then delete it permanently from there" }, 409);
   }
   await c.env.DB.prepare("DELETE FROM invoices WHERE id = ? AND account_id = ?").bind(id, accountId).run();
   return c.json({ ok: true });

@@ -54,31 +54,37 @@ export const api = {
   importProducts: (items) => post("/api/products/import", { items }),
 
   // Quotations
-  listQuotations: () => get("/api/quotations"),
+  listQuotations: (trash) => get(`/api/quotations${trash ? "?trash=1" : ""}`),
   getQuotation: (id) => get(`/api/quotations/${id}`),
   createQuotation: (body) => post("/api/quotations", body),
   updateQuotation: (id, body) => put(`/api/quotations/${id}`, body),
   approveQuotation: (id) => patch(`/api/quotations/${id}/approve`),
   rejectQuotation: (id) => patch(`/api/quotations/${id}/reject`),
   convertQuotationToInvoice: (id, body) => post(`/api/quotations/${id}/convert-to-invoice`, body),
+  discardQuotation: (id) => patch(`/api/quotations/${id}/discard`),
+  restoreQuotation: (id) => patch(`/api/quotations/${id}/restore`),
   deleteQuotation: (id) => del(`/api/quotations/${id}`),
 
   // Invoices
-  listInvoices: () => get("/api/invoices"),
+  listInvoices: (trash) => get(`/api/invoices${trash ? "?trash=1" : ""}`),
   getInvoice: (id) => get(`/api/invoices/${id}`),
   createInvoice: (body) => post("/api/invoices", body),
   updateInvoice: (id, body) => put(`/api/invoices/${id}`, body),
   approveInvoice: (id) => patch(`/api/invoices/${id}/approve`),
   rejectInvoice: (id) => patch(`/api/invoices/${id}/reject`),
   convertInvoiceToBill: (id, body) => post(`/api/invoices/${id}/convert-to-bill`, body),
+  discardInvoice: (id) => patch(`/api/invoices/${id}/discard`),
+  restoreInvoice: (id) => patch(`/api/invoices/${id}/restore`),
   deleteInvoice: (id) => del(`/api/invoices/${id}`),
 
   // Bills / receipts
-  listBills: () => get("/api/bills"),
+  listBills: (trash) => get(`/api/bills${trash ? "?trash=1" : ""}`),
   getBill: (id) => get(`/api/bills/${id}`),
   createBill: (body) => post("/api/bills", body),
   updateBill: (id, body) => put(`/api/bills/${id}`, body),
   voidBill: (id) => patch(`/api/bills/${id}/void`),
+  discardBill: (id) => patch(`/api/bills/${id}/discard`),
+  restoreBill: (id) => patch(`/api/bills/${id}/restore`),
   deleteBill: (id) => del(`/api/bills/${id}`),
 
   // Billing history

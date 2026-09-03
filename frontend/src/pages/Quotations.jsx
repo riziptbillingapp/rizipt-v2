@@ -152,8 +152,8 @@ function QuotationDetailModal({ id, open, onClose, onChanged, customers, onEdit 
     }
   };
 
-  const remove = async () => {
-    if (!confirm(`Delete quotation ${doc.doc_number}? This can't be undone.`)) return;
+  const removePermanently = async () => {
+    if (!confirm(`Permanently delete quotation ${doc.doc_number}? This can't be undone.`)) return;
     setBusy(true);
     setError("");
     try {
@@ -242,42 +242,66 @@ function QuotationDetailModal({ id, open, onClose, onChanged, customers, onEdit 
         </p>
       )}
 
+      {doc.discarded_at && (
+        <p className="mt-3 rounded-md bg-ledger-red/10 px-3 py-2 text-sm text-ledger-red">
+          This quotation is in the trash. Restore it to edit or convert it again, or delete it permanently.
+        </p>
+      )}
+
       <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
-        <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
-          Preview / Download PDF
-        </button>
-        {isEditable && (
-          <button className="btn-secondary" disabled={busy} onClick={() => onEdit(doc)}>
-            Edit
-          </button>
-        )}
-        {doc.approval_status === "pending" && (
+        {doc.discarded_at ? (
           <>
-            <button
-              className="btn-primary"
-              disabled={busy}
-              onClick={() => act(() => api.approveQuotation(doc.id))}
-            >
-              Approve
+            <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+              Preview / Download PDF
             </button>
-            <button className="btn-danger" disabled={busy} onClick={() => act(() => api.rejectQuotation(doc.id))}>
-              Reject
+            <button className="btn-primary" disabled={busy} onClick={() => act(() => api.restoreQuotation(doc.id))}>
+              Restore
+            </button>
+            <button className="btn-danger" disabled={busy} onClick={removePermanently}>
+              Delete permanently
             </button>
           </>
-        )}
-        {doc.approval_status === "approved" && doc.status !== "converted" && (
-          <button
-            className="btn-primary"
-            disabled={busy}
-            onClick={() => act(() => api.convertQuotationToInvoice(doc.id, {}))}
-          >
-            Convert to invoice
-          </button>
-        )}
-        {isEditable && (
-          <button className="btn-danger ml-auto" disabled={busy} onClick={remove}>
-            Delete
-          </button>
+        ) : (
+          <>
+            <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+              Preview / Download PDF
+            </button>
+            {isEditable && (
+              <button className="btn-secondary" disabled={busy} onClick={() => onEdit(doc)}>
+                Edit
+              </button>
+            )}
+            {doc.approval_status === "pending" && (
+              <>
+                <button
+                  className="btn-primary"
+                  disabled={busy}
+                  onClick={() => act(() => api.approveQuotation(doc.id))}
+                >
+                  Approve
+                </button>
+                <button className="btn-danger" disabled={busy} onClick={() => act(() => api.rejectQuotation(doc.id))}>
+                  Reject
+                </button>
+              </>
+            )}
+            {doc.approval_status === "approved" && doc.status !== "converted" && (
+              <button
+                className="btn-primary"
+                disabled={busy}
+                onClick={() => act(() => api.convertQuotationToInvoice(doc.id, {}))}
+              >
+                Convert to invoice
+              </button>
+            )}
+            <button
+              className="btn-danger ml-auto"
+              disabled={busy}
+              onClick={() => act(() => api.discardQuotation(doc.id))}
+            >
+              Move to trash
+            </button>
+          </>
         )}
       </div>
 
@@ -300,14 +324,15 @@ export default function Quotations() {
   const [editingDoc, setEditingDoc] = useState(null);
   const [detailId, setDetailId] = useState(null);
   const [error, setError] = useState("");
+  const [showTrash, setShowTrash] = useState(false);
 
-  const load = () => api.listQuotations().then(setQuotations).catch((e) => setError(e.message));
+  const load = () => api.listQuotations(showTrash).then(setQuotations).catch((e) => setError(e.message));
 
   useEffect(() => {
     load();
     api.listCustomers().then(setCustomers).catch(() => {});
     api.listProducts().then(setProducts).catch(() => {});
-  }, []);
+  }, [showTrash]);
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || "—";
 
@@ -329,15 +354,27 @@ export default function Quotations() {
           <h1 className="font-display text-2xl font-semibold text-ink">Quotations</h1>
           <p className="text-sm text-ink-soft">Approve a quotation, then convert it straight into an invoice.</p>
         </div>
-        <button className="btn-primary" onClick={openCreate} disabled={customers.length === 0}>
-          + New quotation
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setShowTrash((v) => !v)}>
+            {showTrash ? "Back to quotations" : "Trash"}
+          </button>
+          {!showTrash && (
+            <button className="btn-primary" onClick={openCreate} disabled={customers.length === 0}>
+              + New quotation
+            </button>
+          )}
+        </div>
       </header>
 
-      {customers.length === 0 && (
+      {!showTrash && customers.length === 0 && (
         <p className="mb-4 text-sm text-ledger-amber">Add a customer first before creating a quotation.</p>
       )}
       {error && <div className="mb-4 rounded-md bg-ledger-red/10 px-4 py-2 text-sm text-ledger-red">{error}</div>}
+      {showTrash && (
+        <p className="mb-4 text-sm text-ink-soft">
+          Discarded quotations. Open one to restore it or delete it permanently.
+        </p>
+      )}
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
@@ -373,7 +410,7 @@ export default function Quotations() {
             {quotations.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-ink-soft">
-                  No quotations yet.
+                  {showTrash ? "Trash is empty." : "No quotations yet."}
                 </td>
               </tr>
             )}

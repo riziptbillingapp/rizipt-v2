@@ -228,14 +228,83 @@ function BillDetailModal({ id, open, onClose, onChanged, customers }) {
         </div>
       </div>
 
+      {doc.discarded_at && (
+        <p className="mb-3 rounded-md bg-ledger-red/10 px-3 py-2 text-sm text-ledger-red">
+          This bill is in the trash. Restore it, or delete it permanently.
+        </p>
+      )}
+
       <div className="mt-6 flex flex-wrap gap-2 border-t border-paper-line pt-4">
-        <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
-          Preview / Download PDF
-        </button>
-        {doc.status !== "void" && (
-          <button className="btn-danger" disabled={busy} onClick={voidBill}>
-            Void receipt
-          </button>
+        {doc.discarded_at ? (
+          <>
+            <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+              Preview / Download PDF
+            </button>
+            <button
+              className="btn-primary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  setDoc(await api.restoreBill(doc.id));
+                  onChanged();
+                } catch (e) {
+                  setError(e.message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Restore
+            </button>
+            <button
+              className="btn-danger"
+              disabled={busy}
+              onClick={async () => {
+                if (!confirm(`Permanently delete bill ${doc.doc_number}? This can't be undone.`)) return;
+                setBusy(true);
+                try {
+                  await api.deleteBill(doc.id);
+                  onChanged();
+                  onClose();
+                } catch (e) {
+                  setError(e.message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Delete permanently
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn-secondary" onClick={() => setPreviewOpen(true)}>
+              Preview / Download PDF
+            </button>
+            {doc.status !== "void" && (
+              <button className="btn-danger" disabled={busy} onClick={voidBill}>
+                Void receipt
+              </button>
+            )}
+            <button
+              className="btn-danger ml-auto"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  setDoc(await api.discardBill(doc.id));
+                  onChanged();
+                } catch (e) {
+                  setError(e.message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Move to trash
+            </button>
+          </>
         )}
       </div>
 
@@ -257,14 +326,15 @@ export default function Bills() {
   const [createOpen, setCreateOpen] = useState(false);
   const [detailId, setDetailId] = useState(null);
   const [error, setError] = useState("");
+  const [showTrash, setShowTrash] = useState(false);
 
-  const load = () => api.listBills().then(setBills).catch((e) => setError(e.message));
+  const load = () => api.listBills(showTrash).then(setBills).catch((e) => setError(e.message));
 
   useEffect(() => {
     load();
     api.listCustomers().then(setCustomers).catch(() => {});
     api.listProducts().then(setProducts).catch(() => {});
-  }, []);
+  }, [showTrash]);
 
   const customerName = (id) => customers.find((c) => c.id === id)?.name || "—";
 
@@ -275,12 +345,24 @@ export default function Bills() {
           <h1 className="font-display text-2xl font-semibold text-ink">Bills / Receipts</h1>
           <p className="text-sm text-ink-soft">Direct sales, or ones converted from an approved invoice.</p>
         </div>
-        <button className="btn-primary" onClick={() => setCreateOpen(true)} disabled={customers.length === 0}>
-          + New bill / receipt
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setShowTrash((v) => !v)}>
+            {showTrash ? "Back to bills" : "Trash"}
+          </button>
+          {!showTrash && (
+            <button className="btn-primary" onClick={() => setCreateOpen(true)} disabled={customers.length === 0}>
+              + New bill / receipt
+            </button>
+          )}
+        </div>
       </header>
 
       {error && <div className="mb-4 rounded-md bg-ledger-red/10 px-4 py-2 text-sm text-ledger-red">{error}</div>}
+      {showTrash && (
+        <p className="mb-4 text-sm text-ink-soft">
+          Discarded bills / receipts. Open one to restore it or delete it permanently.
+        </p>
+      )}
 
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
@@ -318,7 +400,7 @@ export default function Bills() {
             {bills.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-ink-soft">
-                  No bills yet.
+                  {showTrash ? "Trash is empty." : "No bills yet."}
                 </td>
               </tr>
             )}
