@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { fileToCompressedDataUrl, fileToCroppedStampDataUrl } from "../utils/image.js";
 import { buildUpiUri, generateQrDataUrl } from "../utils/upiQr.js";
 import { DEFAULT_BRAND_COLOR } from "../utils/color.js";
+import { GST_STATES, stateCodeFromGstin } from "../constants/gstStates.js";
 
 const COLOR_PRESETS = [
   { label: "Navy (default)", value: "#233A5E" },
@@ -252,9 +253,40 @@ export default function CompanyProfile() {
             {FIELDS.map(([field, label]) => (
               <div key={field}>
                 <label className="field-label">{label}</label>
-                <input className="field-input" value={form[field] ?? ""} onChange={(e) => update(field, e.target.value)} />
+                <input
+                  className="field-input"
+                  value={form[field] ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (field === "gstin") {
+                      const derived = stateCodeFromGstin(value);
+                      setForm((f) => ({ ...f, gstin: value, gst_state_code: derived || f.gst_state_code }));
+                    } else {
+                      update(field, value);
+                    }
+                  }}
+                />
               </div>
             ))}
+            <div>
+              <label className="field-label">GST state (for filing)</label>
+              <select
+                className="field-input"
+                value={form.gst_state_code ?? ""}
+                onChange={(e) => update("gst_state_code", e.target.value)}
+              >
+                <option value="">Select state…</option>
+                {GST_STATES.map(([code, name]) => (
+                  <option key={code} value={code}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-ink-soft">
+                The state your GST registration is in. Used to work out CGST+SGST vs IGST on every invoice and bill.
+                Auto-filled from your GSTIN.
+              </p>
+            </div>
           </div>
         </div>
 

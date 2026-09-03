@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env, AuthContext } from "../types";
 import { parseBody } from "../utils/http";
 import { requireAuth, requireActiveSubscription } from "../middleware/auth";
+import { stateCodeFromGstin } from "../utils/gst";
 
 export const company = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 company.use("*", requireAuth, requireActiveSubscription);
@@ -10,6 +11,7 @@ const EDITABLE_FIELDS = [
   "name",
   "legal_name",
   "gstin",
+  "gst_state_code",
   "pan",
   "email",
   "phone",
@@ -56,6 +58,11 @@ company.put("/", async (c) => {
   const { accountId } = c.get("auth");
   await getOrCreateProfile(c.env.DB, accountId);
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
+
+  if ("gstin" in body && !("gst_state_code" in body)) {
+    const derived = stateCodeFromGstin(body.gstin as string);
+    if (derived) body.gst_state_code = derived;
+  }
 
   const sets: string[] = [];
   const values: unknown[] = [];

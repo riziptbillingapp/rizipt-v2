@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env, AuthContext } from "../types";
 import { parseBody } from "../utils/http";
 import { requireAuth, requireActiveSubscription } from "../middleware/auth";
+import { stateCodeFromGstin } from "../utils/gst";
 
 export const customers = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 customers.use("*", requireAuth, requireActiveSubscription);
@@ -36,9 +37,11 @@ customers.post("/", async (c) => {
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
   if (!body.name) return c.json({ error: "name is required" }, 400);
 
+  const stateCode = (body.state_code as string) || stateCodeFromGstin(body.gstin as string) || null;
+
   const result = await c.env.DB.prepare(
-    `INSERT INTO customers (account_id, name, email, phone, gstin, billing_address, shipping_address, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO customers (account_id, name, email, phone, gstin, state_code, billing_address, shipping_address, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       accountId,
@@ -46,6 +49,7 @@ customers.post("/", async (c) => {
       body.email ?? null,
       body.phone ?? null,
       body.gstin ?? null,
+      stateCode,
       body.billing_address ?? null,
       body.shipping_address ?? null,
       body.notes ?? null
@@ -63,7 +67,12 @@ customers.put("/:id", async (c) => {
   const id = c.req.param("id");
   const body = await parseBody<Record<string, unknown>>(c.req.raw);
 
-  const fields = ["name", "email", "phone", "gstin", "billing_address", "shipping_address", "notes"];
+  if ("gstin" in body && !("state_code" in body)) {
+    const derived = stateCodeFromGstin(body.gstin as string);
+    if (derived) body.state_code = derived;
+  }
+
+  const fields = ["name", "email", "phone", "gstin", "state_code", "billing_address", "shipping_address", "notes"];
   const sets: string[] = [];
   const values: unknown[] = [];
   for (const f of fields) {

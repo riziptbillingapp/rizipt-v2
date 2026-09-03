@@ -186,11 +186,15 @@ quotations.post("/:id/convert-to-invoice", async (c) => {
 
   const docNumber = await nextDocNumber(c.env.DB, accountId, "invoice");
 
+  const customer = await c.env.DB.prepare("SELECT state_code FROM customers WHERE id = ? AND account_id = ?")
+    .bind(quotation.customer_id, accountId)
+    .first<{ state_code: string | null }>();
+
   const result = await c.env.DB.prepare(
     `INSERT INTO invoices
       (account_id, doc_number, customer_id, quotation_id, source_type, issue_date, due_date, items,
-       subtotal, discount_total, tax_total, grand_total, notes, terms, status, approval_status)
-     VALUES (?, ?, ?, ?, 'quotation', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`
+       subtotal, discount_total, tax_total, grand_total, notes, terms, status, approval_status, place_of_supply)
+     VALUES (?, ?, ?, ?, 'quotation', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`
   )
     .bind(
       accountId,
@@ -207,7 +211,8 @@ quotations.post("/:id/convert-to-invoice", async (c) => {
       quotation.notes,
       quotation.terms,
       // preserve the quotation's approval status onto the new invoice
-      quotation.approval_status
+      quotation.approval_status,
+      customer?.state_code || null
     )
     .run();
 

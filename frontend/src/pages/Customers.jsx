@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import Modal from "../components/Modal.jsx";
+import { GST_STATES, stateCodeFromGstin } from "../constants/gstStates.js";
 
-const emptyForm = { name: "", email: "", phone: "", gstin: "", billing_address: "", shipping_address: "", notes: "" };
+const emptyForm = { name: "", email: "", phone: "", gstin: "", state_code: "", billing_address: "", shipping_address: "", notes: "" };
 
 export default function Customers() {
   const [customers, setCustomers] = useState([]);
@@ -159,8 +160,30 @@ export default function Customers() {
             <input
               className="field-input"
               value={form.gstin || ""}
-              onChange={(e) => setForm({ ...form, gstin: e.target.value })}
+              onChange={(e) => {
+                const gstin = e.target.value;
+                const derived = stateCodeFromGstin(gstin);
+                setForm({ ...form, gstin, state_code: derived || form.state_code });
+              }}
             />
+          </div>
+          <div>
+            <label className="field-label">State (place of supply)</label>
+            <select
+              className="field-input"
+              value={form.state_code || ""}
+              onChange={(e) => setForm({ ...form, state_code: e.target.value })}
+            >
+              <option value="">Select state…</option>
+              {GST_STATES.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-ink-soft">
+              Used to work out CGST+SGST vs IGST on invoices and bills for this customer. Auto-filled from GSTIN when possible.
+            </p>
           </div>
           <div>
             <label className="field-label">Billing address</label>

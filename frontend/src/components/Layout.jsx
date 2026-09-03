@@ -14,6 +14,7 @@ const NAV = [
   { to: "/company-profile", label: "Company Profile" },
   { to: "/letterheads", label: "Letterheads" },
   { to: "/project-status-reports", label: "Status Reports" },
+  { to: "/gst-filing", label: "GST Filing" },
   { to: "/subscription", label: "Subscription" },
 ];
 export default function Layout() {

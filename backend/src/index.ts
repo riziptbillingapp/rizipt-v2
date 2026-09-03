@@ -13,6 +13,7 @@ import { history } from "./routes/history";
 import { billing } from "./routes/billing";
 import { letterheads } from "./routes/letterheads";
 import { projectStatusReports } from "./routes/projectStatusReports";
+import { gst } from "./routes/gst";
 
 const app = new Hono<{ Bindings: Env; Variables: { auth: AuthContext } }>();
 
@@ -44,6 +45,7 @@ app.route("/api/billing-history", history);
 app.route("/api/billing", billing);
 app.route("/api/letterheads", letterheads);
 app.route("/api/project-status-reports", projectStatusReports);
+app.route("/api/gst", gst);
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
 app.onError((err, c) => {

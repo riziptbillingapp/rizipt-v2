@@ -18,6 +18,7 @@ import LetterheadsListPage from "./pages/LetterheadsListPage.jsx";
 import LetterheadFormPage from "./pages/LetterheadFormPage.jsx";
 import ProjectStatusReportsListPage from "./pages/ProjectStatusReportsListPage.jsx";
 import ProjectStatusReportFormPage from "./pages/ProjectStatusReportFormPage.jsx";
+import GstFiling from "./pages/GstFiling.jsx";
 export default function App() {
   return (
     <AuthProvider>
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/project-status-reports" element={<ProjectStatusReportsListPage />} />
           <Route path="/project-status-reports/new" element={<ProjectStatusReportFormPage />} />
           <Route path="/project-status-reports/:id/edit" element={<ProjectStatusReportFormPage />} />
+          <Route path="/gst-filing" element={<GstFiling />} />
           <Route path="/subscription" element={<Subscription />} />
           <Route path="/admin" element={<Admin />} />
         </Route>

@@ -27,10 +27,38 @@ const put = (path, body) => request(path, { method: "PUT", body: JSON.stringify(
 const patch = (path, body) => request(path, { method: "PATCH", body: JSON.stringify(body ?? {}) });
 const del = (path) => request(path, { method: "DELETE" });
 
+async function downloadFile(path, filename) {
+  const res = await fetch(`${BASE_URL}${path}`, { credentials: "include" });
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`;
+    try {
+      const data = await res.json();
+      message = data?.error || message;
+    } catch {
+      // no JSON body
+    }
+    throw new Error(message);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   // Company profile
   getCompany: () => get("/api/company-profile"),
   updateCompany: (body) => put("/api/company-profile", body),
+
+  getGstr1: (period) => get(`/api/gst/gstr1?period=${period}`),
+  getGstr3b: (period) => get(`/api/gst/gstr3b?period=${period}`),
+  downloadGstr1Csv: (period) => downloadFile(`/api/gst/gstr1?period=${period}&format=csv`, `GSTR1-${period}.csv`),
+  downloadGstr3bCsv: (period) => downloadFile(`/api/gst/gstr3b?period=${period}&format=csv`, `GSTR3B-${period}.csv`),
 
   // Customers
   listCustomers: (search) => get(`/api/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),

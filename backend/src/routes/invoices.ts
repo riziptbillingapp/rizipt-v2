@@ -54,11 +54,19 @@ invoices.post("/", async (c) => {
   const totals = computeTotals(items);
   const docNumber = await nextDocNumber(c.env.DB, accountId, "invoice");
 
+  let placeOfSupply = (body.place_of_supply as string) || null;
+  if (!placeOfSupply) {
+    const customer = await c.env.DB.prepare("SELECT state_code FROM customers WHERE id = ? AND account_id = ?")
+      .bind(body.customer_id, accountId)
+      .first<{ state_code: string | null }>();
+    placeOfSupply = customer?.state_code || null;
+  }
+
   const result = await c.env.DB.prepare(
     `INSERT INTO invoices
       (account_id, doc_number, customer_id, quotation_id, source_type, issue_date, due_date, items,
-       subtotal, discount_total, tax_total, grand_total, amount_paid, notes, terms, status, approval_status)
-     VALUES (?, ?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       subtotal, discount_total, tax_total, grand_total, amount_paid, notes, terms, status, approval_status, place_of_supply)
+     VALUES (?, ?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       accountId,
@@ -75,7 +83,8 @@ invoices.post("/", async (c) => {
       body.notes ?? null,
       body.terms ?? null,
       body.status || "draft",
-      "pending"
+      "pending",
+      placeOfSupply
     )
     .run();
 
@@ -106,7 +115,7 @@ invoices.put("/:id", async (c) => {
     `UPDATE invoices SET
       customer_id = ?, issue_date = ?, due_date = ?, items = ?,
       subtotal = ?, discount_total = ?, tax_total = ?, grand_total = ?,
-      amount_paid = ?, notes = ?, terms = ?, status = ?, approval_status = ?, updated_at = datetime('now')
+      amount_paid = ?, notes = ?, terms = ?, status = ?, approval_status = ?, place_of_supply = ?, updated_at = datetime('now')
      WHERE id = ? AND account_id = ?`
   )
     .bind(
@@ -123,6 +132,7 @@ invoices.put("/:id", async (c) => {
       body.terms ?? existing.terms,
       body.status ?? existing.status,
       approvalStatus,
+      body.place_of_supply ?? existing.place_of_supply,
       id,
       accountId
     )
@@ -192,8 +202,8 @@ invoices.post("/:id/convert-to-bill", async (c) => {
     `INSERT INTO bills
       (account_id, doc_number, customer_id, invoice_id, source_type, issue_date, items,
        subtotal, discount_total, tax_total, grand_total, payment_method, payment_reference,
-       notes, status, approval_status)
-     VALUES (?, ?, ?, ?, 'invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?)`
+       notes, status, approval_status, place_of_supply)
+     VALUES (?, ?, ?, ?, 'invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', ?, ?)`
   )
     .bind(
       accountId,
@@ -210,7 +220,8 @@ invoices.post("/:id/convert-to-bill", async (c) => {
       body.payment_reference ?? null,
       invoice.notes,
       // preserve the invoice's approval status onto the new bill
-      invoice.approval_status
+      invoice.approval_status,
+      invoice.place_of_supply
     )
     .run();
 

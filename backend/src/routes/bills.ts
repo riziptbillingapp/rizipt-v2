@@ -54,12 +54,20 @@ bills.post("/", async (c) => {
   const totals = computeTotals(items);
   const docNumber = await nextDocNumber(c.env.DB, accountId, "bill");
 
+  let placeOfSupply = (body.place_of_supply as string) || null;
+  if (!placeOfSupply) {
+    const customer = await c.env.DB.prepare("SELECT state_code FROM customers WHERE id = ? AND account_id = ?")
+      .bind(body.customer_id, accountId)
+      .first<{ state_code: string | null }>();
+    placeOfSupply = customer?.state_code || null;
+  }
+
   const result = await c.env.DB.prepare(
     `INSERT INTO bills
       (account_id, doc_number, customer_id, invoice_id, source_type, issue_date, items,
        subtotal, discount_total, tax_total, grand_total, payment_method, payment_reference,
-       notes, status, approval_status)
-     VALUES (?, ?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')`
+       notes, status, approval_status, place_of_supply)
+     VALUES (?, ?, ?, NULL, 'direct', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?)`
   )
     .bind(
       accountId,
@@ -74,7 +82,8 @@ bills.post("/", async (c) => {
       body.payment_method || "cash",
       body.payment_reference ?? null,
       body.notes ?? null,
-      body.status || "paid"
+      body.status || "paid",
+      placeOfSupply
     )
     .run();
 
@@ -101,7 +110,7 @@ bills.put("/:id", async (c) => {
     `UPDATE bills SET
       customer_id = ?, issue_date = ?, items = ?,
       subtotal = ?, discount_total = ?, tax_total = ?, grand_total = ?,
-      payment_method = ?, payment_reference = ?, notes = ?, status = ?, updated_at = datetime('now')
+      payment_method = ?, payment_reference = ?, notes = ?, status = ?, place_of_supply = ?, updated_at = datetime('now')
      WHERE id = ? AND account_id = ?`
   )
     .bind(
@@ -116,6 +125,7 @@ bills.put("/:id", async (c) => {
       body.payment_reference ?? existing.payment_reference,
       body.notes ?? existing.notes,
       body.status ?? existing.status,
+      body.place_of_supply ?? existing.place_of_supply,
       id,
       accountId
     )
