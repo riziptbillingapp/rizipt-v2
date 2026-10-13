@@ -79,4 +79,4 @@ export function splitTax(taxTotal: number, homeStateCode: string | null | undefi
 }
 
 /** B2C Large threshold per CBIC rules — inter-state B2C invoices above this value get their own GSTR-1 section. Verify against the current threshold before filing, as CBIC has changed this figure over time. */
-export const B2C_LARGE_THRESHOLD = 100000;
+export const B2C_LARGE_THRESHOLD = 250000;

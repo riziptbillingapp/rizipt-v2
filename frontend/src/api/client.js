@@ -59,6 +59,19 @@ export const api = {
   getGstr3b: (period) => get(`/api/gst/gstr3b?period=${period}`),
   downloadGstr1Csv: (period) => downloadFile(`/api/gst/gstr1?period=${period}&format=csv`, `GSTR1-${period}.csv`),
   downloadGstr3bCsv: (period) => downloadFile(`/api/gst/gstr3b?period=${period}&format=csv`, `GSTR3B-${period}.csv`),
+  // QRMP filing route
+  gstOverview: (fy, q) => get(`/api/gst-filing/overview?fy=${fy}&q=${q}`),
+  gstReview: (fy, q) => get(`/api/gst-filing/review?fy=${fy}&q=${q}`),
+  gstIff: (fy, q, period) => get(`/api/gst-filing/iff?fy=${fy}&q=${q}&period=${period}`),
+  gstQ1: (fy, q) => get(`/api/gst-filing/gstr1?fy=${fy}&q=${q}`),
+  gstQ3b: (fy, q) => get(`/api/gst-filing/gstr3b?fy=${fy}&q=${q}`),
+  gstSetOverride: (invoice_id, action) => put("/api/gst-filing/override", { invoice_id, action }),
+  gstSave3bInputs: (body) => put("/api/gst-filing/3b-inputs", body),
+  gstAddPayment: (body) => post("/api/gst-filing/payments", body),
+  gstDeletePayment: (id) => del(`/api/gst-filing/payments/${id}`),
+  gstMarkFiled: (body) => post("/api/gst-filing/filings", body),
+  gstUnmarkFiled: (return_type, period) => del(`/api/gst-filing/filings?return_type=${return_type}&period=${period}`),
+  gstSetIffDocument: (invoice_id, period, remove = false) => post("/api/gst-filing/iff-documents", { invoice_id, period, remove }),
 
   // Customers
   listCustomers: (search) => get(`/api/customers${search ? `?search=${encodeURIComponent(search)}` : ""}`),
