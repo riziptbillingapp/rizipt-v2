@@ -105,11 +105,6 @@ export async function generateLetterheadPdf({ doc, company }) {
   }
 
   // Right-aligned doc meta block
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(16);
-  pdf.setTextColor(...NAVY);
-  pdf.text("LETTERHEAD", pageWidth - margin, headerTop + 14, { align: "right" });
-
   pdf.setFont("courier", "normal");
   pdf.setFontSize(9);
   pdf.setTextColor(...INK_SOFT);
