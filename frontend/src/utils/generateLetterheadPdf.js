@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { hexToRgb, DEFAULT_BRAND_COLOR } from "./color.js";
+import { ensureUnicodeFonts, drawText, splitText } from "./pdfUnicodeText.js";
 
 const INK = [28, 36, 48];
 const INK_SOFT = [86, 95, 110];
@@ -27,8 +28,10 @@ function getImageDimensions(dataUrl) {
 }
 
 function stripHtml(html) {
+  const s = String(html || "");
+  if (!/<[a-z!/][^>]*>/i.test(s)) return s; // plain textarea text — keep as-is
   const tmp = document.createElement("div");
-  tmp.innerHTML = html || "";
+  tmp.innerHTML = s.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h[1-6])>/gi, "\n");
   return tmp.textContent || tmp.innerText || "";
 }
 
@@ -39,6 +42,7 @@ function stripHtml(html) {
  * as your Quotations/Invoices/Bills. Returns a jsPDF instance.
  */
 export async function generateLetterheadPdf({ doc, company }) {
+  await ensureUnicodeFonts();
   const NAVY = hexToRgb(company?.brand_color || DEFAULT_BRAND_COLOR);
   const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
   const pageWidth = pdf.internal.pageSize.getWidth();
@@ -67,7 +71,7 @@ export async function generateLetterheadPdf({ doc, company }) {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(13);
   pdf.setTextColor(...NAVY);
-  pdf.text(String(company?.name || "").toUpperCase(), textX, headerTop + 12);
+  drawText(pdf, String(company?.name || "").toUpperCase(), textX, headerTop + 12);
 
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8);
@@ -76,10 +80,10 @@ export async function generateLetterheadPdf({ doc, company }) {
     .filter(Boolean)
     .join(", ");
   const rightBlockWidth = 150;
-  const addressWrapped = pdf.splitTextToSize(addressLine, contentWidth - (textX - margin) - rightBlockWidth);
+  const addressWrapped = splitText(pdf, addressLine, contentWidth - (textX - margin) - rightBlockWidth);
   let addrY = headerTop + 26;
   addressWrapped.slice(0, 2).forEach((line) => {
-    pdf.text(line, textX, addrY);
+    drawText(pdf, line, textX, addrY);
     addrY += 10;
   });
 
@@ -87,11 +91,11 @@ export async function generateLetterheadPdf({ doc, company }) {
     .filter(Boolean)
     .join("   |   ");
   if (contactLine) {
-    pdf.text(contactLine, textX, addrY);
+    drawText(pdf, contactLine, textX, addrY);
     addrY += 10;
   }
   if (company?.website) {
-    pdf.text(`Web: ${company.website}`, textX, addrY);
+    drawText(pdf, `Web: ${company.website}`, textX, addrY);
     addrY += 10;
   }
   const idLine = [company?.gstin && `GSTIN: ${company.gstin}`, company?.pan && `PAN: ${company.pan}`]
@@ -130,14 +134,14 @@ export async function generateLetterheadPdf({ doc, company }) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
     pdf.setTextColor(...INK);
-    pdf.text(doc.recipient_name, margin, y);
+    drawText(pdf, doc.recipient_name, margin, y);
     y += 13;
     if (doc.recipient_address) {
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(9);
       pdf.setTextColor(...INK_SOFT);
-      const lines = pdf.splitTextToSize(doc.recipient_address, 260);
-      pdf.text(lines, margin, y);
+      const lines = splitText(pdf, doc.recipient_address, 260);
+      drawText(pdf, lines, margin, y, { lineHeight: 12 });
       y += lines.length * 12;
     }
     y += 14;
@@ -147,28 +151,30 @@ export async function generateLetterheadPdf({ doc, company }) {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(12);
   pdf.setTextColor(...INK);
-  pdf.text(doc.title, margin, y);
-  y += 18;
+  const titleLines = splitText(pdf, doc.title || "", contentWidth);
+  drawText(pdf, titleLines, margin, y, { lineHeight: 16 });
+  y += 18 + (titleLines.length - 1) * 16;
 
   if (doc.subject) {
     pdf.setFont("helvetica", "italic");
     pdf.setFontSize(9);
     pdf.setTextColor(...INK_SOFT);
-    pdf.text(`Subject: ${doc.subject}`, margin, y);
-    y += 20;
+    const subjLines = splitText(pdf, `Subject: ${doc.subject}`, contentWidth);
+    drawText(pdf, subjLines, margin, y, { lineHeight: 12 });
+    y += 20 + (subjLines.length - 1) * 12;
   }
 
   // --- Body content (rich text stripped to plain text for now) ---
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9.5);
   pdf.setTextColor(...INK);
-  const bodyLines = pdf.splitTextToSize(stripHtml(doc.body_content), contentWidth);
+  const bodyLines = splitText(pdf, stripHtml(doc.body_content), contentWidth);
   bodyLines.forEach((line) => {
     if (y > pageHeight - 120) {
       pdf.addPage();
       y = margin;
     }
-    pdf.text(line, margin, y);
+    drawText(pdf, line, margin, y);
     y += 14;
   });
 
@@ -184,7 +190,7 @@ export async function generateLetterheadPdf({ doc, company }) {
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8);
   pdf.setTextColor(...INK);
-  pdf.text(`For ${company?.name || ""}`, pageWidth - margin, y, { align: "right" });
+  drawText(pdf, `For ${company?.name || ""}`, pageWidth - margin, y, { align: "right" });
 
   const sigBlockTop = y + 10;
   // Real stamps/signatures read as roughly 1"-1.5" across on a printed page —
@@ -245,7 +251,7 @@ export async function generateLetterheadPdf({ doc, company }) {
   pdf.line(pageWidth - margin - 120, lineY, pageWidth - margin, lineY);
   pdf.setFontSize(7);
   pdf.setTextColor(...INK_SOFT);
-  pdf.text(doc.prepared_by || "Authorised Signatory", pageWidth - margin, lineY + 10, { align: "right" });
+  drawText(pdf, doc.prepared_by || "Authorised Signatory", pageWidth - margin, lineY + 10, { align: "right" });
 
   pdf.setDrawColor(...LINE);
   pdf.setFontSize(7);
